@@ -36,7 +36,7 @@
 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🏀 Basketball Tracker</title>
+<title>🏀 Mosquita 2026</title>
 <style>
   /* ── Reset & base ── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -180,7 +180,7 @@
 <body>
 <div class="container">
 
-  <h1>🏀 Basketball Tracker</h1>
+  <h1>🏀 Mosquita 2026</h1>
 
   <!-- ── Connection status ── -->
   <div id="statusBar">
@@ -426,19 +426,21 @@ function deleteEntry(key) {
 }
 
 // ── Reset current week ────────────────────────────────────────
+// Marks entries with weekReset:true instead of deleting them,
+// so annual points are preserved but weekly ranking is cleared.
 function resetWeek() {
   const { week, year } = currentWeek();
-  if (!confirm(`¿Borrar todos los resultados de la semana ${week} de ${year}?\n(El ranking anual no se ve afectado.)`)) return;
+  if (!confirm(`¿Resetear la semana ${week} de ${year}?\nEl ranking semanal se limpia pero los puntos anuales se conservan.`)) return;
 
-  const toDelete = entriesCache.filter(e => {
+  const toReset = entriesCache.filter(e => {
     const w = isoWeekYear(e.date);
-    return w.week === week && w.year === year;
+    return w.week === week && w.year === year && !e.weekReset;
   });
 
-  const updates = {};
-  toDelete.forEach(e => { updates[`${DB_PATH}/${e.key}`] = null; });
-  if (Object.keys(updates).length === 0) return alert("No hay entradas esta semana.");
+  if (toReset.length === 0) return alert("No hay entradas activas esta semana.");
 
+  const updates = {};
+  toReset.forEach(e => { updates[`${DB_PATH}/${e.key}/weekReset`] = true; });
   db.ref().update(updates)
     .catch(e => alert("Error al resetear: " + e.message));
 }
@@ -486,7 +488,7 @@ function renderHistory(entries) {
   el.innerHTML = [...entries].reverse().map(e =>
     `<div class="history-item">
       <div>
-        <div class="history-date">${e.date}</div>
+        <div class="history-date">${e.date}${e.weekReset ? ' <span style="font-size:.7rem;color:#a1a1aa;background:#f4f4f5;padding:1px 5px;border-radius:4px;">semana reseteada</span>' : ''}</div>
         <div class="history-positions">
           <span>${sm("badge-1","1")}${e.first}</span>
           <span>${sm("badge-2","2")}${e.second}</span>
@@ -537,7 +539,7 @@ function render() {
 
   const weekEntries = entriesCache.filter(e => {
     const w = isoWeekYear(e.date);
-    return w.week === week && w.year === wYear;
+    return w.week === week && w.year === wYear && !e.weekReset;
   });
   const yearEntries = entriesCache.filter(e => e.date.startsWith(String(year)));
 
