@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!--
+  ╔══════════════════════════════════════════════════════════════╗
+  ║  Basketball Tracker — con Firebase Realtime Database         ║
+  ╠══════════════════════════════════════════════════════════════╣
+  ║  PASO 1 — Crear proyecto Firebase (gratis)                   ║
+  ║  1. Ir a https://console.firebase.google.com                 ║
+  ║  2. "Agregar proyecto" → ponerle un nombre → continuar       ║
+  ║  3. (Google Analytics: opcional, podés desactivarlo)         ║
+  ║                                                              ║
+  ║  PASO 2 — Crear la base de datos                             ║
+  ║  1. En el menú izquierdo: Build → Realtime Database          ║
+  ║  2. "Create Database" → elegir región → "Start in test mode" ║
+  ║     (test mode = acceso libre por 30 días, suficiente        ║
+  ║      para arrancar; después podés dejar las reglas abiertas) ║
+  ║  3. Copiar la URL que aparece (termina en .firebaseio.com)   ║
+  ║                                                              ║
+  ║  PASO 3 — Obtener las credenciales de la app                 ║
+  ║  1. En la rueda ⚙ (arriba izq) → "Project settings"         ║
+  ║  2. Sección "Your apps" → clic en el ícono </> (Web)         ║
+  ║  3. Registrar la app (nombre libre) → NO activar Hosting     ║
+  ║  4. Copiar el objeto firebaseConfig que aparece              ║
+  ║  5. Pegarlo reemplazando FIREBASE_CONFIG más abajo           ║
+  ║                                                              ║
+  ║  PASO 4 — Reglas de la base (para que siempre funcione)      ║
+  ║  En Realtime Database → Rules → pegar esto y publicar:       ║
+  ║  { "rules": { ".read": true, ".write": true } }              ║
+  ║                                                              ║
+  ║  PASO 5 — Deploy en GitHub Pages                             ║
+  ║  1. Crear repo en GitHub → subir este index.html             ║
+  ║  2. Settings → Pages → Source: main / root                   ║
+  ║  3. Compartir la URL con todos los jugadores                  ║
+  ╚══════════════════════════════════════════════════════════════╝
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏀 Basketball Tracker</title>
+<style>
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f4f4f5;
+    color: #18181b;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-size: 1.4rem; font-weight: 700; text-align: center; letter-spacing: -0.5px; }
+  h2 { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+
+  /* ── Card ── */
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  }
+
+  /* ── Connection status bar ── */
+  #statusBar {
+    display: flex; align-items: center; gap: 8px;
+    font-size: .82rem; font-weight: 500; padding: 8px 14px;
+    border-radius: 8px; background: #fefce8; color: #854d0e;
+    border: 1px solid #fde68a;
+  }
+  #statusBar.connected    { background: #f0fdf4; color: #15803d; border-color: #86efac; }
+  #statusBar.error        { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor; flex-shrink: 0;
+    animation: pulse 1.5s infinite;
+  }
+  .connected .dot, .error .dot { animation: none; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ── Setup card ── */
+  .setup-card {
+    background: #fffbeb; border: 1.5px solid #fde68a;
+    border-radius: 12px; padding: 18px;
+  }
+  .setup-card h2 { color: #92400e; }
+  .setup-steps { margin-top: 10px; font-size: .88rem; line-height: 1.8; color: #78350f; }
+  .setup-steps code {
+    background: #fef3c7; padding: 1px 5px; border-radius: 4px;
+    font-family: monospace; font-size: .85em;
+  }
+
+  /* ── Form elements ── */
+  label { display: block; font-size: .85rem; font-weight: 500; margin-bottom: 4px; color: #52525b; }
+  select, input[type="date"] {
+    width: 100%;
+    min-height: 44px;
+    border: 1.5px solid #d4d4d8;
+    border-radius: 8px;
+    padding: 0 12px;
+    font-size: 1rem;
+    background: #fff;
+    color: #18181b;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+  }
+  select:focus, input[type="date"]:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+  }
+  .field { margin-bottom: 14px; }
+  .field:last-of-type { margin-bottom: 18px; }
+
+  /* ── Position badges ── */
+  .pos-label { display: flex; align-items: center; gap: 6px; }
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    font-size: .72rem; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .badge-1 { background: #f59e0b; }
+  .badge-2 { background: #94a3b8; }
+  .badge-3 { background: #b45309; }
+
+  /* ── Buttons ── */
+  button {
+    min-height: 44px; border: none; border-radius: 8px;
+    font-size: .95rem; font-weight: 600; cursor: pointer;
+    padding: 0 16px; width: 100%; transition: opacity .15s;
+  }
+  button:active { opacity: .8; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: #6366f1; color: #fff; }
+  .btn-danger  { background: #fff; color: #ef4444; border: 1.5px solid #fca5a5; }
+  .btn-green   { background: #fff; color: #16a34a; border: 1.5px solid #86efac; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-row button { flex: 1; font-size: .82rem; min-height: 40px; }
+
+  /* ── Messages ── */
+  .msg { display: none; border-radius: 8px; padding: 10px 14px; font-size: .9rem; margin-bottom: 14px; }
+  .msg.visible { display: block; }
+  .msg-error   { background: #fef2f2; color: #dc2626; }
+  .msg-success { background: #f0fdf4; color: #16a34a; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  thead th {
+    text-align: left; color: #71717a; font-weight: 600;
+    font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
+    padding: 0 8px 8px; border-bottom: 1.5px solid #e4e4e7;
+  }
+  thead th:last-child { text-align: right; }
+  tbody tr:not(:last-child) td { border-bottom: 1px solid #f4f4f5; }
+  tbody td { padding: 10px 8px; }
+  tbody td:last-child { text-align: right; font-weight: 700; }
+  .rank { color: #a1a1aa; font-weight: 600; }
+  .medal { width: 28px; }
+  .empty { color: #a1a1aa; font-size: .88rem; text-align: center; padding: 16px 0; }
+
+  /* ── History ── */
+  .history-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; font-size: .88rem;
+  }
+  .history-item:not(:last-child) { border-bottom: 1px solid #f4f4f5; }
+  .history-date { color: #71717a; font-size: .78rem; margin-bottom: 3px; }
+  .history-positions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .history-positions span { display: flex; align-items: center; gap: 3px; }
+  .del-btn {
+    min-height: 32px; width: auto; background: none; color: #a1a1aa;
+    font-size: 1rem; padding: 0 8px; border-radius: 6px;
+    border: 1px solid #e4e4e7; flex-shrink: 0;
+  }
+  .del-btn:hover { color: #ef4444; border-color: #fca5a5; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🏀 Basketball Tracker</h1>
+
+  <!-- ── Connection status ── -->
+  <div id="statusBar">
+    <span class="dot"></span>
+    <span id="statusText">Conectando con Firebase…</span>
+  </div>
+
+  <!-- ── Firebase setup guide (shown only when config is missing) ── -->
+  <div id="setupCard" class="setup-card" style="display:none">
+    <h2>⚙️ Configurar Firebase</h2>
+    <div class="setup-steps">
+      El objeto <code>firebaseConfig</code> en el código todavía tiene los valores de ejemplo.<br><br>
+      <strong>Pasos rápidos:</strong><br>
+      1. Ir a <strong>console.firebase.google.com</strong><br>
+      2. Crear proyecto → Build → <strong>Realtime Database</strong> → "Start in test mode"<br>
+      3. ⚙ → Project settings → agregar app web (<code>&lt;/&gt;</code>)<br>
+      4. Copiar el objeto <code>firebaseConfig</code> y pegarlo en el código<br>
+      5. En Rules de la DB pegar: <code>{"rules":{".read":true,".write":true}}</code>
+    </div>
+  </div>
+
+  <!-- ── Entry form ── -->
+  <div class="card">
+    <h2>Cargar resultado</h2>
+    <div id="formError" class="msg msg-error"></div>
+    <div class="field">
+      <label for="dateInput">Fecha</label>
+      <input type="date" id="dateInput">
+    </div>
+    <div class="field">
+      <label class="pos-label"><span class="badge badge-1">1</span> 1er lugar (+5 pts)</label>
+      <select id="sel1"><option value="">— Elegir jugador —</option></select>
+    </div>
+    <div class="field">
+      <label class="pos-label"><span class="badge badge-2">2</span> 2do lugar (+3 pts)</label>
+      <select id="sel2"><option value="">— Elegir jugador —</option></select>
+    </div>
+    <div class="field">
+      <label class="pos-label"><span class="badge badge-3">3</span> 3er lugar (+1 pt)</label>
+      <select id="sel3"><option value="">— Elegir jugador —</option></select>
+    </div>
+    <button class="btn-primary" id="saveBtn" onclick="saveEntry()">Guardar resultado</button>
+  </div>
+
+  <!-- ── Weekly ranking ── -->
+  <div class="card">
+    <h2>Ranking semanal <small id="weekLabel" style="font-weight:400;color:#71717a;font-size:.82rem;"></small></h2>
+    <table>
+      <thead><tr><th>#</th><th>Jugador</th><th>Pts</th></tr></thead>
+      <tbody id="weeklyBody"></tbody>
+    </table>
+    <div class="btn-row">
+      <button class="btn-danger" onclick="resetWeek()">Resetear semana actual</button>
+    </div>
+  </div>
+
+  <!-- ── Annual ranking ── -->
+  <div class="card">
+    <h2>Ranking anual <small id="yearLabel" style="font-weight:400;color:#71717a;font-size:.82rem;"></small></h2>
+    <table>
+      <thead><tr><th>#</th><th>Jugador</th><th>Pts</th></tr></thead>
+      <tbody id="annualBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Export ── -->
+  <div class="card">
+    <h2>Exportar</h2>
+    <div class="btn-row">
+      <button class="btn-green" onclick="exportCSV()">⬇ CSV (Excel)</button>
+    </div>
+  </div>
+
+  <!-- ── History ── -->
+  <div class="card">
+    <h2>Historial</h2>
+    <div id="historyList"></div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK (compat version — works without a build step) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  PASO 1: Pegá aquí tu firebaseConfig copiado de la consola
+// ═══════════════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey:            "AIzaSyAgFFEtQdyQ_FwKAxExb5wH88Mg8W2Zi9s",
+  authDomain:        "mosquita-2cef5.firebaseapp.com",
+  databaseURL:       "https://mosquita-2cef5-default-rtdb.firebaseio.com",
+  projectId:         "mosquita-2cef5",
+  storageBucket:     "mosquita-2cef5.firebasestorage.app",
+  messagingSenderId: "659251156599",
+  appId:             "1:659251156599:web:a3c7bfa903190162721872"
+};
+// ═══════════════════════════════════════════════════════════════
+
+// ── Lista de jugadores ────────────────────────────────────────
+const PLAYERS = [
+  "Nico - La torre de maldonado",
+  "Santi Ponce",
+  "Juani - Botas con Gato",
+  "Agus - El Homosapiens",
+  "Joaco - Johnny bravo escalado por 0,5",
+  "Ale - torres",
+  "Gonza - El preciso",
+  "Niels - El Holandes Errante",
+  "Martin - Marteeeen",
+  "Nareg",
+  "Fede - el scarpin veloz",
+  "Leandro - El meñique",
+  "Franco - El Gardinero de Mandarinas",
+  "Saba - Cleptomano",
+  "Cami - Suelo vegetal",
+  "Alex",
+  "Gabo - troy bolton criado a don satur",
+  "Guille",
+  "Nacho - Serrucho de goma",
+  "Maxi - Carrion"
+];
+
+const POINTS = { first: 5, second: 3, third: 1 };
+const DB_PATH = "basketball/entries";
+
+// ── In-memory cache updated by the Firebase listener ─────────
+// Each item: { key: firebasePushId, date, first, second, third }
+let entriesCache = [];
+
+// ── Firebase init ─────────────────────────────────────────────
+const configIsPlaceholder = Object.values(firebaseConfig).some(v => v === "REEMPLAZAR");
+
+let db = null;
+
+if (configIsPlaceholder) {
+  setStatus("error", "Firebase no configurado — completá el firebaseConfig en el código");
+  document.getElementById("setupCard").style.display = "block";
+} else {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+
+    // Real-time listener: re-renders every time data changes in any device
+    db.ref(DB_PATH).on("value", snapshot => {
+      const raw = snapshot.val() || {};
+      entriesCache = Object.entries(raw)
+        .map(([key, val]) => ({ key, ...val }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      setStatus("connected", "Conectado — datos en tiempo real");
+      render();
+    }, err => {
+      setStatus("error", "Error de conexión: " + err.message);
+    });
+
+    // Detect offline/online
+    db.ref(".info/connected").on("value", snap => {
+      if (!snap.val()) setStatus("connecting", "Sin conexión — esperando…");
+    });
+
+  } catch (e) {
+    setStatus("error", "Error al inicializar Firebase: " + e.message);
+  }
+}
+
+// ── Status bar ────────────────────────────────────────────────
+function setStatus(type, text) {
+  const bar = document.getElementById("statusBar");
+  bar.className = type === "connected" ? "connected" : type === "error" ? "error" : "";
+  document.getElementById("statusText").textContent = text;
+  document.getElementById("saveBtn").disabled = type !== "connected";
+}
+
+// ── Date helpers ──────────────────────────────────────────────
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isoWeekYear(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return { week, year: d.getUTCFullYear() };
+}
+
+function currentWeek() { return isoWeekYear(todayStr()); }
+function currentYear()  { return new Date().getFullYear(); }
+
+// ── Init dropdowns ────────────────────────────────────────────
+(function initSelects() {
+  ["sel1", "sel2", "sel3"].forEach(id => {
+    const sel = document.getElementById(id);
+    PLAYERS.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = opt.textContent = p;
+      sel.appendChild(opt);
+    });
+  });
+  document.getElementById("dateInput").value = todayStr();
+  document.getElementById("weekLabel").textContent = `(Semana ${currentWeek().week}, ${currentWeek().year})`;
+  document.getElementById("yearLabel").textContent  = `(${currentYear()})`;
+})();
+
+// ── Save entry → Firebase push ────────────────────────────────
+function saveEntry() {
+  document.getElementById("formError").classList.remove("visible");
+
+  const date   = document.getElementById("dateInput").value;
+  const first  = document.getElementById("sel1").value;
+  const second = document.getElementById("sel2").value;
+  const third  = document.getElementById("sel3").value;
+
+  if (!date)                                    return showError("Seleccioná una fecha.");
+  if (!first || !second || !third)              return showError("Completá los tres puestos.");
+  if (new Set([first, second, third]).size < 3) return showError("Cada puesto debe tener un jugador diferente.");
+
+  db.ref(DB_PATH).push({ date, first, second, third })
+    .then(() => {
+      ["sel1", "sel2", "sel3"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("dateInput").value = todayStr();
+    })
+    .catch(e => showError("Error al guardar: " + e.message));
+}
+
+function showError(msg) {
+  const el = document.getElementById("formError");
+  el.textContent = msg;
+  el.classList.add("visible");
+}
+
+// ── Delete single entry ───────────────────────────────────────
+function deleteEntry(key) {
+  if (!confirm("¿Borrar este resultado?")) return;
+  db.ref(`${DB_PATH}/${key}`).remove()
+    .catch(e => alert("Error al borrar: " + e.message));
+}
+
+// ── Reset current week ────────────────────────────────────────
+function resetWeek() {
+  const { week, year } = currentWeek();
+  if (!confirm(`¿Borrar todos los resultados de la semana ${week} de ${year}?\n(El ranking anual no se ve afectado.)`)) return;
+
+  const toDelete = entriesCache.filter(e => {
+    const w = isoWeekYear(e.date);
+    return w.week === week && w.year === year;
+  });
+
+  const updates = {};
+  toDelete.forEach(e => { updates[`${DB_PATH}/${e.key}`] = null; });
+  if (Object.keys(updates).length === 0) return alert("No hay entradas esta semana.");
+
+  db.ref().update(updates)
+    .catch(e => alert("Error al resetear: " + e.message));
+}
+
+// ── Build ranking ─────────────────────────────────────────────
+function buildRanking(entries) {
+  const totals = {};
+  PLAYERS.forEach(p => totals[p] = 0);
+  entries.forEach(e => {
+    totals[e.first]  = (totals[e.first]  || 0) + POINTS.first;
+    totals[e.second] = (totals[e.second] || 0) + POINTS.second;
+    totals[e.third]  = (totals[e.third]  || 0) + POINTS.third;
+  });
+  return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+}
+
+// ── Render ranking table ──────────────────────────────────────
+const MEDALS = ["🥇", "🥈", "🥉"];
+function renderTable(bodyId, entries) {
+  const tbody   = document.getElementById(bodyId);
+  const ranking = buildRanking(entries).filter(([, pts]) => pts > 0);
+  if (ranking.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="3" class="empty">Sin datos todavía.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = ranking.map(([name, pts], i) =>
+    `<tr>
+      <td class="medal">${MEDALS[i] || `<span class="rank">${i + 1}</span>`}</td>
+      <td>${name}</td>
+      <td>${pts}</td>
+    </tr>`
+  ).join("");
+}
+
+// ── Render history ────────────────────────────────────────────
+function renderHistory(entries) {
+  const el = document.getElementById("historyList");
+  if (entries.length === 0) {
+    el.innerHTML = `<p class="empty">Sin resultados cargados.</p>`;
+    return;
+  }
+  const sm = (cls, n) =>
+    `<span class="badge ${cls}" style="width:16px;height:16px;font-size:.6rem">${n}</span>`;
+
+  el.innerHTML = [...entries].reverse().map(e =>
+    `<div class="history-item">
+      <div>
+        <div class="history-date">${e.date}</div>
+        <div class="history-positions">
+          <span>${sm("badge-1","1")}${e.first}</span>
+          <span>${sm("badge-2","2")}${e.second}</span>
+          <span>${sm("badge-3","3")}${e.third}</span>
+        </div>
+      </div>
+      <button class="del-btn" onclick="deleteEntry('${e.key}')" title="Borrar">✕</button>
+    </div>`
+  ).join("");
+}
+
+// ── Export CSV ────────────────────────────────────────────────
+function exportCSV() {
+  if (entriesCache.length === 0) return alert("No hay datos para exportar.");
+
+  const years = [...new Set(entriesCache.map(e => e.date.slice(0, 4)))].sort();
+  let csv = "\uFEFF"; // BOM para Excel
+  csv += "HISTORIAL DE PARTIDOS\r\n";
+  csv += "Fecha,1° lugar (5 pts),2° lugar (3 pts),3° lugar (1 pt)\r\n";
+  entriesCache.forEach(e => {
+    csv += `${e.date},"${e.first}","${e.second}","${e.third}"\r\n`;
+  });
+  csv += "\r\n";
+  years.forEach(yr => {
+    const yEntries = entriesCache.filter(e => e.date.startsWith(yr));
+    const ranking  = buildRanking(yEntries).filter(([, pts]) => pts > 0);
+    csv += `RANKING ${yr}\r\n`;
+    csv += "Puesto,Jugador,Puntos\r\n";
+    ranking.forEach(([name, pts], i) => {
+      csv += `${i + 1},"${name}",${pts}\r\n`;
+    });
+    csv += "\r\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), { href: url, download: `basketball_${todayStr()}.csv` });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Main render (called by the Firebase listener) ─────────────
+function render() {
+  const { week, year: wYear } = currentWeek();
+  const year = currentYear();
+
+  const weekEntries = entriesCache.filter(e => {
+    const w = isoWeekYear(e.date);
+    return w.week === week && w.year === wYear;
+  });
+  const yearEntries = entriesCache.filter(e => e.date.startsWith(String(year)));
+
+  renderTable("weeklyBody", weekEntries);
+  renderTable("annualBody", yearEntries);
+  renderHistory(entriesCache);
+}
+</script>
+</body>
+</html>
