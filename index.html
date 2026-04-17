@@ -204,6 +204,12 @@
 
   <!-- ── Entry form ── -->
   <div class="card">
+    <h2>Sorteo de posiciones</h2>
+    <button class="btn-primary" onclick="drawPositions()">🎲 Sortear</button>
+    <div id="drawResult" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="card">
     <h2>Cargar resultado</h2>
     <div id="formError" class="msg msg-error"></div>
     <div class="field">
@@ -260,6 +266,11 @@
     <div id="historyList"></div>
   </div>
 
+  <div class="card">
+    <h2>Zona de peligro</h2>
+    <button class="btn-danger" onclick="deleteAllEntries()">🗑 Borrar TODOS los datos</button>
+  </div>
+
 </div>
 
 <!-- Firebase SDK (compat version — works without a build step) -->
@@ -267,6 +278,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <script>
+const WRITE_PIN = '1234';
 // ═══════════════════════════════════════════════════════════════
 //  PASO 1: Pegá aquí tu firebaseConfig copiado de la consola
 // ═══════════════════════════════════════════════════════════════
@@ -377,6 +389,13 @@ function isoWeekYear(dateStr) {
 function currentWeek() { return isoWeekYear(todayStr()); }
 function currentYear()  { return new Date().getFullYear(); }
 
+function checkPin() {
+  const value = prompt('Ingresá el PIN para continuar:');
+  if (value === WRITE_PIN) return true;
+  if (value !== null) alert('PIN incorrecto.');
+  return false;
+}
+
 // ── Init dropdowns ────────────────────────────────────────────
 (function initSelects() {
   ["sel1", "sel2", "sel3"].forEach(id => {
@@ -393,7 +412,17 @@ function currentYear()  { return new Date().getFullYear(); }
 })();
 
 // ── Save entry → Firebase push ────────────────────────────────
+function drawPositions() {
+  const shuffled = [...PLAYERS];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  document.getElementById("drawResult").innerHTML = `<ol>${shuffled.map(player => `<li>${player}</li>`).join("")}</ol>`;
+}
+
 function saveEntry() {
+  if (!checkPin()) return;
   document.getElementById("formError").classList.remove("visible");
 
   const date   = document.getElementById("dateInput").value;
@@ -421,6 +450,7 @@ function showError(msg) {
 
 // ── Delete single entry ───────────────────────────────────────
 function deleteEntry(key) {
+  if (!checkPin()) return;
   if (!confirm("¿Borrar este resultado?")) return;
   db.ref(`${DB_PATH}/${key}`).remove()
     .catch(e => alert("Error al borrar: " + e.message));
@@ -430,6 +460,7 @@ function deleteEntry(key) {
 // Marks entries with weekReset:true instead of deleting them,
 // so annual points are preserved but weekly ranking is cleared.
 function resetWeek() {
+  if (!checkPin()) return;
   const { week, year } = currentWeek();
   if (!confirm(`¿Resetear la semana ${week} de ${year}?\nEl ranking semanal se limpia pero los puntos anuales se conservan.`)) return;
 
@@ -447,6 +478,13 @@ function resetWeek() {
 }
 
 // ── Build ranking ─────────────────────────────────────────────
+function deleteAllEntries() {
+  if (!checkPin()) return;
+  if (!confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) return;
+  db.ref('basketball/entries').remove()
+    .catch(e => alert("Error al borrar: " + e.message));
+}
+
 function buildRanking(entries) {
   const totals = {};
   PLAYERS.forEach(p => totals[p] = 0);
