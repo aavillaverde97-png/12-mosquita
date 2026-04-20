@@ -215,98 +215,64 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 10px;
-  }
-  .draw-kicker {
-    font-size: .72rem;
-    font-weight: 800;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: #c2410c;
-    margin-bottom: 6px;
-  }
-  .draw-subtitle {
-    color: #78716c;
-    font-size: .92rem;
-    line-height: 1.45;
     margin-bottom: 14px;
   }
   .draw-badge {
     flex-shrink: 0;
-    min-width: 56px;
-    height: 56px;
-    border-radius: 18px;
+    min-width: 48px;
+    height: 48px;
+    border-radius: 15px;
     display: grid;
     place-items: center;
-    font-size: 1.4rem;
+    font-size: 1.2rem;
     background: linear-gradient(135deg, #fdba74, #fb923c);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.55);
   }
-  #drawResult { margin-top: 16px; }
-  .draw-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 12px;
-    padding: 10px 12px;
-    border-radius: 14px;
-    background: rgba(255,255,255,.78);
-    border: 1px solid rgba(251, 146, 60, .20);
-  }
-  .draw-summary strong { font-size: .95rem; color: #9a3412; }
-  .draw-summary span { color: #78716c; font-size: .82rem; }
+  #drawResult { margin-top: 14px; }
   .draw-grid {
     display: grid;
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
   .draw-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: 16px;
+    gap: 8px;
+    min-width: 0;
+    padding: 9px 10px;
+    border-radius: 14px;
     background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,247,237,.94));
     border: 1px solid rgba(251, 146, 60, .18);
-    box-shadow: 0 10px 18px rgba(194, 65, 12, .06);
+    box-shadow: 0 8px 14px rgba(194, 65, 12, .06);
   }
   .draw-rank {
-    width: 36px;
-    height: 36px;
-    border-radius: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
     flex-shrink: 0;
     display: grid;
     place-items: center;
     font-weight: 900;
-    font-size: .92rem;
+    font-size: .78rem;
     color: #9a3412;
     background: linear-gradient(135deg, #fed7aa, #fdba74);
   }
-  .draw-item.top-3 .draw-rank {
-    color: #fff;
-    background: linear-gradient(135deg, #f59e0b, #ea580c);
-    box-shadow: 0 10px 16px rgba(234, 88, 12, .22);
-  }
   .draw-name {
+    min-width: 0;
     font-weight: 800;
+    font-size: .88rem;
+    line-height: 1.2;
     color: #1c1917;
     letter-spacing: -.02em;
-  }
-  .draw-note {
-    margin-left: auto;
-    font-size: .72rem;
-    font-weight: 800;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: #c2410c;
+    word-break: break-word;
   }
 
   @media (max-width: 480px) {
     .card { padding: 18px; border-radius: 20px; }
     .draw-header { align-items: flex-start; }
-    .draw-badge { min-width: 48px; height: 48px; border-radius: 14px; }
-    .draw-item { padding: 11px 12px; gap: 10px; }
-    .draw-note { font-size: .66rem; }
+    .draw-grid { gap: 7px; }
+    .draw-item { padding: 8px 9px; gap: 7px; }
+    .draw-name { font-size: .84rem; }
   }
 </style>
 </head>
@@ -339,12 +305,10 @@
   <div class="card draw-card">
     <div class="draw-header">
       <div>
-        <div class="draw-kicker">Draft Night</div>
         <h2>Sorteo de posiciones</h2>
       </div>
       <div class="draw-badge">🏀</div>
     </div>
-    <p class="draw-subtitle">Mezclá el orden y mirá el ranking del día con una vista más clara para pasar lista rápido.</p>
     <button class="btn-primary" onclick="drawPositions()">🎲 Sortear</button>
     <div id="drawResult"></div>
   </div>
@@ -560,16 +524,11 @@ function drawPositions() {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   document.getElementById("drawResult").innerHTML = `
-    <div class="draw-summary">
-      <strong>${shuffled.length} jugadores listos</strong>
-      <span>Top 3 resaltado para cargarlo más fácil</span>
-    </div>
     <div class="draw-grid">
       ${shuffled.map((player, index) => `
-        <div class="draw-item ${index < 3 ? "top-3" : ""}">
+        <div class="draw-item">
           <div class="draw-rank">${index + 1}</div>
           <div class="draw-name">${player}</div>
-          ${index < 3 ? `<div class="draw-note">Top ${index + 1}</div>` : ``}
         </div>
       `).join("")}
     </div>
