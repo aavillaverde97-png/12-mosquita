@@ -372,6 +372,9 @@
 
   <div class="card">
     <h2>Zona de peligro</h2>
+    <div class="btn-row">
+      <button class="btn-danger" onclick="migratePlayerNames()">Migrar nombres viejos</button>
+    </div>
     <button class="btn-danger" onclick="deleteAllEntries()">🗑 Borrar TODOS los datos</button>
   </div>
 
@@ -423,12 +426,71 @@ const PLAYERS = [
   "Ale"
 ];
 
+const PLAYER_ALIASES = {
+  "Nareg": "Nareg",
+  "Gabo - troy bolton criado a don satur": "Gabo",
+  "Gabo": "Gabo",
+  "Santi Ponce": "Santi P",
+  "Santi P": "Santi P",
+  "Nico - La torre de maldonado": "Nico",
+  "Nico": "Nico",
+  "Saba - Cleptomano": "Santi A",
+  "Santi A": "Santi A",
+  "Juani - Botas con Gato": "Juani",
+  "Juani": "Juani",
+  "Niels - El Holandes Errante": "Niels",
+  "Niels": "Niels",
+  "Maxi": "Maxi",
+  "Sofi": "Sofi",
+  "Franco - El Gardinero de Mandarinas": "Franco",
+  "Franco": "Franco",
+  "Alex": "Alex",
+  "Guille -": "Guille",
+  "Guille": "Guille",
+  "Thais": "Thais",
+  "Cami - Suelo vegetal": "Cami",
+  "Cami": "Cami",
+  "Fede -el scarpin veloz": "Fede",
+  "Fede - el scarpin veloz": "Fede",
+  "Fede": "Fede",
+  "Agus - El Homosapiens": "Agus",
+  "Agus": "Agus",
+  "Leandro - El meñique": "Leandro",
+  "Leandro - El meÃ±ique": "Leandro",
+  "Leandro": "Leandro",
+  "Martin - Marteeeen": "Martin",
+  "Martin": "Martin",
+  "Nacho - Serrucho de goma": "Nacho",
+  "Nacho": "Nacho",
+  "Gonza - El preciso": "Gonza",
+  "Gonza": "Gonza",
+  "Joaco - Johnny bravo escalado por 0,5": "Joaco",
+  "Joaco": "Joaco",
+  "Ale - torres": "Ale",
+  "Ale": "Ale"
+};
+
 const POINTS = { first: 5, second: 3, third: 1 };
 const DB_PATH = "basketball/entries";
 
 // ── In-memory cache updated by the Firebase listener ─────────
 // Each item: { key: firebasePushId, date, first, second, third }
 let entriesCache = [];
+
+function normalizePlayerName(name) {
+  if (!name) return name;
+  const trimmed = String(name).trim();
+  return PLAYER_ALIASES[trimmed] || trimmed;
+}
+
+function normalizeEntry(entry) {
+  return {
+    ...entry,
+    first: normalizePlayerName(entry.first),
+    second: normalizePlayerName(entry.second),
+    third: normalizePlayerName(entry.third)
+  };
+}
 
 // ── Firebase init ─────────────────────────────────────────────
 const configIsPlaceholder = Object.values(firebaseConfig).some(v => v === "REEMPLAZAR");
@@ -447,7 +509,7 @@ if (configIsPlaceholder) {
     db.ref(DB_PATH).on("value", snapshot => {
       const raw = snapshot.val() || {};
       entriesCache = Object.entries(raw)
-        .map(([key, val]) => ({ key, ...val }))
+        .map(([key, val]) => normalizeEntry({ key, ...val }))
         .sort((a, b) => a.date.localeCompare(b.date));
       setStatus("connected", "Conectado — datos en tiempo real");
       render();
@@ -540,9 +602,9 @@ function saveEntry() {
   document.getElementById("formError").classList.remove("visible");
 
   const date   = document.getElementById("dateInput").value;
-  const first  = document.getElementById("sel1").value;
-  const second = document.getElementById("sel2").value;
-  const third  = document.getElementById("sel3").value;
+  const first  = normalizePlayerName(document.getElementById("sel1").value);
+  const second = normalizePlayerName(document.getElementById("sel2").value);
+  const third  = normalizePlayerName(document.getElementById("sel3").value);
 
   if (!date)                                    return showError("Seleccioná una fecha.");
   if (!first || !second || !third)              return showError("Completá los tres puestos.");
@@ -592,6 +654,24 @@ function resetWeek() {
 }
 
 // ── Build ranking ─────────────────────────────────────────────
+function migratePlayerNames() {
+  if (!checkPin()) return;
+  if (!db) return alert("Firebase no estÃ¡ conectado.");
+  if (entriesCache.length === 0) return alert("No hay datos para migrar.");
+  if (!confirm(`Â¿Migrar nombres viejos a los nombres nuevos en ${entriesCache.length} resultados?\nEsto reescribe first, second y third en Firebase.`)) return;
+
+  const updates = {};
+  entriesCache.forEach(e => {
+    updates[`${DB_PATH}/${e.key}/first`] = normalizePlayerName(e.first);
+    updates[`${DB_PATH}/${e.key}/second`] = normalizePlayerName(e.second);
+    updates[`${DB_PATH}/${e.key}/third`] = normalizePlayerName(e.third);
+  });
+
+  db.ref().update(updates)
+    .then(() => alert("MigraciÃ³n completada. Todos los resultados quedaron con los nombres nuevos."))
+    .catch(e => alert("Error al migrar: " + e.message));
+}
+
 function deleteAllEntries() {
   if (!checkPin()) return;
   if (!confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) return;
