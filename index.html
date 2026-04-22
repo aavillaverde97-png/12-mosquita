@@ -585,11 +585,23 @@ function drawPositions() {
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
+  const rankedPlayers = shuffled.map((player, index) => ({ rank: index + 1, player }));
+  const columnCount = 2;
+  const rowCount = Math.ceil(rankedPlayers.length / columnCount);
+  const verticalOrder = [];
+
+  for (let row = 0; row < rowCount; row++) {
+    for (let column = 0; column < columnCount; column++) {
+      const index = column * rowCount + row;
+      if (index < rankedPlayers.length) verticalOrder.push(rankedPlayers[index]);
+    }
+  }
+
   document.getElementById("drawResult").innerHTML = `
     <div class="draw-grid">
-      ${shuffled.map((player, index) => `
+      ${verticalOrder.map(({ rank, player }) => `
         <div class="draw-item">
-          <div class="draw-rank">${index + 1}</div>
+          <div class="draw-rank">${rank}</div>
           <div class="draw-name">${player}</div>
         </div>
       `).join("")}
