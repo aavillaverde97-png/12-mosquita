@@ -430,9 +430,9 @@ const PLAYERS = [
 const PLAYER_ALIASES = {
   "Nareg": "Nareg",
   "Gabo - troy bolton criado a don satur": "Gabo",
-  "Santi Ponce": "Johni sims",
+  "Santi Ponce": "Santi P",
   "Nico - La torre de maldonado": "Nico",
-  "Saba - Cleptomano",
+  "Saba - Cleptomano": "Santi A",
   "Juani - Botas con Gato": "Juani",
   "Niels - El Holandes Errante": "Niels",
   "Maxi": "Maxi",
@@ -499,7 +499,11 @@ if (configIsPlaceholder) {
 
     // Detect offline/online
     db.ref(".info/connected").on("value", snap => {
-      if (!snap.val()) setStatus("connecting", "Sin conexión — esperando…");
+      if (snap.val()) {
+        setStatus("connected", "Conectado — cargando datos");
+      } else {
+        setStatus("connecting", "Sin conexión — esperando…");
+      }
     });
 
   } catch (e) {
