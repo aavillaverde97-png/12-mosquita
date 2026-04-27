@@ -177,7 +177,13 @@
   .rank { color: #a1a1aa; font-weight: 600; }
   .medal { width: 28px; }
   .empty { color: #a1a1aa; font-size: .88rem; text-align: center; padding: 16px 0; }
+  .table-scroll { width: 100%; overflow-x: auto; }
+  .stats-table { min-width: 620px; }
+  .stats-table th, .stats-table td { white-space: nowrap; }
+  .stats-table td:first-child, .stats-table th:first-child { position: sticky; left: 0; background: rgba(255,255,255,.96); }
+  .stats-table th:not(:first-child), .stats-table td:not(:first-child) { text-align: right; }
 
+  /* â”€â”€ Stats â”€â”€ */
   /* ── History ── */
   .history-item {
     display: flex; justify-content: space-between; align-items: center;
@@ -357,6 +363,16 @@
   </div>
 
   <!-- ── Export ── -->
+  <div class="card">
+    <h2>Estadísticas por jugador</h2>
+    <div class="table-scroll">
+      <table class="stats-table">
+        <thead><tr><th>Jugador</th><th>Pts</th><th>1°</th><th>2°</th><th>3°</th><th>Podios</th><th>Prom.</th></tr></thead>
+        <tbody id="statsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Exportar</h2>
     <div class="btn-row">
@@ -688,6 +704,65 @@ function buildRanking(entries) {
 
 // ── Render ranking table ──────────────────────────────────────
 const MEDALS = ["🥇", "🥈", "🥉"];
+function buildPlayerStats(entries) {
+  const stats = {};
+  PLAYERS.forEach(name => {
+    stats[name] = { name, points: 0, wins: 0, seconds: 0, thirds: 0, podiums: 0 };
+  });
+
+  entries.forEach(e => {
+    const places = [
+      [e.first, "wins", POINTS.first],
+      [e.second, "seconds", POINTS.second],
+      [e.third, "thirds", POINTS.third]
+    ];
+
+    places.forEach(([name, field, points]) => {
+      const player = normalizePlayerName(name);
+      if (!player) return;
+      if (!stats[player]) stats[player] = { name: player, points: 0, wins: 0, seconds: 0, thirds: 0, podiums: 0 };
+      stats[player][field] += 1;
+      stats[player].podiums += 1;
+      stats[player].points += points;
+    });
+  });
+
+  return Object.values(stats).sort((a, b) =>
+    b.points - a.points ||
+    b.wins - a.wins ||
+    b.seconds - a.seconds ||
+    b.thirds - a.thirds ||
+    a.name.localeCompare(b.name)
+  );
+}
+
+function formatAverage(points, podiums) {
+  if (podiums === 0) return "0.0";
+  return (points / podiums).toFixed(1);
+}
+
+function renderStatsTable(entries) {
+  const tbody = document.getElementById("statsBody");
+  const stats = buildPlayerStats(entries).filter(player => player.podiums > 0);
+
+  if (stats.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">Sin datos todavía.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = stats.map(player =>
+    `<tr>
+      <td>${player.name}</td>
+      <td>${player.points}</td>
+      <td>${player.wins}</td>
+      <td>${player.seconds}</td>
+      <td>${player.thirds}</td>
+      <td>${player.podiums}</td>
+      <td>${formatAverage(player.points, player.podiums)}</td>
+    </tr>`
+  ).join("");
+}
+
 function renderTable(bodyId, entries) {
   const tbody   = document.getElementById(bodyId);
   const ranking = buildRanking(entries).filter(([, pts]) => pts > 0);
@@ -774,6 +849,7 @@ function render() {
 
   renderTable("weeklyBody", weekEntries);
   renderTable("annualBody", yearEntries);
+  renderStatsTable(entriesCache);
   renderHistory(entriesCache);
 }
 </script>
