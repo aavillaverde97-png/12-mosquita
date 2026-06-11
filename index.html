@@ -135,6 +135,28 @@
   .badge-1 { background: #f59e0b; }
   .badge-2 { background: #94a3b8; }
   .badge-3 { background: #b45309; }
+  .badge-pen { background: #ef4444; }
+
+  /* ── Penalties ── */
+  .pen-row { display: flex; gap: 8px; }
+  .pen-row select { flex: 1; }
+  .pen-add-btn {
+    width: auto; min-height: 44px; flex-shrink: 0;
+    padding: 0 14px; font-size: .85rem; border-radius: 8px;
+    background: #fff; color: #dc2626; border: 1.5px solid #fca5a5;
+  }
+  .pen-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .pen-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
+    border-radius: 999px; padding: 4px 6px 4px 11px;
+    font-size: .82rem; font-weight: 700;
+  }
+  .pen-chip button {
+    min-height: auto; width: auto; padding: 0 5px;
+    background: none; border: none; color: #b91c1c; font-size: .9rem;
+  }
+  .hist-pen { color: #b91c1c; font-size: .78rem; font-weight: 600; margin-top: 3px; }
 
   /* ── Buttons ── */
   button {
@@ -338,6 +360,14 @@
       <label class="pos-label"><span class="badge badge-3">3</span> 3er lugar (+1 pt)</label>
       <select id="sel3"><option value="">— Elegir jugador —</option></select>
     </div>
+    <div class="field">
+      <label class="pos-label"><span class="badge badge-pen">!</span> Penalidades (opcional, pueden ser varias)</label>
+      <div class="pen-row">
+        <select id="selPen"><option value="">— Elegir jugador —</option></select>
+        <button type="button" class="pen-add-btn" onclick="addPenalty()">+ Agregar</button>
+      </div>
+      <div id="penList" class="pen-chips"></div>
+    </div>
     <button class="btn-primary" id="saveBtn" onclick="saveEntry()">Guardar resultado</button>
   </div>
 
@@ -367,7 +397,7 @@
     <h2>Estadísticas por jugador</h2>
     <div class="table-scroll">
       <table class="stats-table">
-        <thead><tr><th>Jugador</th><th>Pts</th><th>Part.</th><th>1°</th><th>2°</th><th>3°</th><th>Podios</th><th>Prom.</th></tr></thead>
+        <thead><tr><th>Jugador</th><th>Pts</th><th>Part.</th><th>1°</th><th>2°</th><th>3°</th><th>Podios</th><th>Pen.</th><th>Prom.</th></tr></thead>
         <tbody id="statsBody"></tbody>
       </table>
     </div>
@@ -384,6 +414,17 @@
   <div class="card">
     <h2>Historial</h2>
     <div id="historyList"></div>
+  </div>
+
+  <!-- ── Mini game ── -->
+  <div class="card">
+    <h2>🏀 Tiro libre <small style="font-weight:400;color:#71717a;font-size:.82rem;">(frená la barra en la zona verde)</small></h2>
+    <div style="display:flex;justify-content:space-between;font-size:.88rem;font-weight:700;color:#7c2d12;margin-bottom:10px;">
+      <span id="gScore">Encestados: 0</span>
+      <span id="gStreak">Racha: 0 🔥</span>
+    </div>
+    <canvas id="gameCanvas" width="320" height="240" style="width:100%;display:block;border-radius:14px;background:linear-gradient(180deg,#fed7aa,#fdba74);"></canvas>
+    <button class="btn-primary" id="shootBtn" style="margin-top:10px;" onclick="shoot()">Tirar 🏀</button>
   </div>
 
   <div class="card">
@@ -466,6 +507,9 @@ const PLAYER_ALIASES = {
   };
 
 const POINTS = { first: 5, second: 3, third: 1 };
+// Puntos que resta/suma cada penalidad en los rankings.
+// Por defecto 0 = solo se cuenta. Cambiá a -1 (o lo que sea) si querés que reste.
+const PENALTY_POINTS = 0;
 const DB_PATH = "basketball/entries";
 
 // ── In-memory cache updated by the Firebase listener ─────────
@@ -483,7 +527,8 @@ function normalizeEntry(entry) {
     ...entry,
     first: normalizePlayerName(entry.first),
     second: normalizePlayerName(entry.second),
-    third: normalizePlayerName(entry.third)
+    third: normalizePlayerName(entry.third),
+    penalties: Object.values(entry.penalties || {}).map(normalizePlayerName)
   };
 }
 
@@ -564,7 +609,7 @@ function checkPin() {
 
 // ── Init dropdowns ────────────────────────────────────────────
 (function initSelects() {
-  ["sel1", "sel2", "sel3"].forEach(id => {
+  ["sel1", "sel2", "sel3", "selPen"].forEach(id => {
     const sel = document.getElementById(id);
     PLAYERS.forEach(p => {
       const opt = document.createElement("option");
@@ -608,6 +653,31 @@ function drawPositions() {
   `;
 }
 
+// ── Penalties (pending list before saving) ────────────────────
+let pendingPenalties = [];
+
+function addPenalty() {
+  document.getElementById("formError").classList.remove("visible");
+  const sel  = document.getElementById("selPen");
+  const name = normalizePlayerName(sel.value);
+  if (!name) return showError("Elegí un jugador para la penalidad.");
+  if (pendingPenalties.includes(name)) return showError(`${name} ya tiene penalidad agregada.`);
+  pendingPenalties.push(name);
+  sel.value = "";
+  renderPendingPenalties();
+}
+
+function removePenalty(name) {
+  pendingPenalties = pendingPenalties.filter(p => p !== name);
+  renderPendingPenalties();
+}
+
+function renderPendingPenalties() {
+  document.getElementById("penList").innerHTML = pendingPenalties.map(p =>
+    `<span class="pen-chip">⚠ ${p}<button type="button" onclick="removePenalty('${p}')" title="Quitar">✕</button></span>`
+  ).join("");
+}
+
 function saveEntry() {
   if (!checkPin()) return;
   document.getElementById("formError").classList.remove("visible");
@@ -621,9 +691,14 @@ function saveEntry() {
   if (!first || !second || !third)              return showError("Completá los tres puestos.");
   if (new Set([first, second, third]).size < 3) return showError("Cada puesto debe tener un jugador diferente.");
 
-  db.ref(DB_PATH).push({ date, first, second, third })
+  const entry = { date, first, second, third };
+  if (pendingPenalties.length) entry.penalties = pendingPenalties;
+
+  db.ref(DB_PATH).push(entry)
     .then(() => {
-      ["sel1", "sel2", "sel3"].forEach(id => document.getElementById(id).value = "");
+      ["sel1", "sel2", "sel3", "selPen"].forEach(id => document.getElementById(id).value = "");
+      pendingPenalties = [];
+      renderPendingPenalties();
       document.getElementById("dateInput").value = todayStr();
     })
     .catch(e => showError("Error al guardar: " + e.message));
@@ -697,6 +772,7 @@ function buildRanking(entries) {
     totals[e.first]  = (totals[e.first]  || 0) + POINTS.first;
     totals[e.second] = (totals[e.second] || 0) + POINTS.second;
     totals[e.third]  = (totals[e.third]  || 0) + POINTS.third;
+    (e.penalties || []).forEach(p => { totals[p] = (totals[p] || 0) + PENALTY_POINTS; });
   });
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
@@ -705,9 +781,8 @@ function buildRanking(entries) {
 const MEDALS = ["🥇", "🥈", "🥉"];
 function buildPlayerStats(entries) {
   const stats = {};
-  PLAYERS.forEach(name => {
-    stats[name] = { name, points: 0, games: entries.length, wins: 0, seconds: 0, thirds: 0, podiums: 0 };
-  });
+  const blankStats = name => ({ name, points: 0, games: entries.length, wins: 0, seconds: 0, thirds: 0, podiums: 0, penalties: 0 });
+  PLAYERS.forEach(name => { stats[name] = blankStats(name); });
 
   entries.forEach(e => {
     const places = [
@@ -719,10 +794,18 @@ function buildPlayerStats(entries) {
     places.forEach(([name, field, points]) => {
       const player = normalizePlayerName(name);
       if (!player) return;
-      if (!stats[player]) stats[player] = { name: player, points: 0, games: entries.length, wins: 0, seconds: 0, thirds: 0, podiums: 0 };
+      if (!stats[player]) stats[player] = blankStats(player);
       stats[player][field] += 1;
       stats[player].podiums += 1;
       stats[player].points += points;
+    });
+
+    (e.penalties || []).forEach(name => {
+      const player = normalizePlayerName(name);
+      if (!player) return;
+      if (!stats[player]) stats[player] = blankStats(player);
+      stats[player].penalties += 1;
+      stats[player].points += PENALTY_POINTS;
     });
   });
 
@@ -744,14 +827,14 @@ function formatAverage(points, games) {
 function renderStatsTable(entries) {
   const tbody = document.getElementById("statsBody");
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">Sin datos todavía.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">Sin datos todavía.</td></tr>`;
     return;
   }
 
   const stats = buildPlayerStats(entries);
 
   if (stats.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty">Sin datos todavía.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty">Sin datos todavía.</td></tr>`;
     return;
   }
 
@@ -764,6 +847,7 @@ function renderStatsTable(entries) {
       <td>${player.seconds}</td>
       <td>${player.thirds}</td>
       <td>${player.podiums}</td>
+      <td>${player.penalties}</td>
       <td>${formatAverage(player.points, player.games)}</td>
     </tr>`
   ).join("");
@@ -804,6 +888,7 @@ function renderHistory(entries) {
           <span>${sm("badge-2","2")}${e.second}</span>
           <span>${sm("badge-3","3")}${e.third}</span>
         </div>
+        ${(e.penalties && e.penalties.length) ? `<div class="hist-pen">⚠ Penalidad: ${e.penalties.join(", ")}</div>` : ""}
       </div>
       <button class="del-btn" onclick="deleteEntry('${e.key}')" title="Borrar">✕</button>
     </div>`
@@ -817,9 +902,9 @@ function exportCSV() {
   const years = [...new Set(entriesCache.map(e => e.date.slice(0, 4)))].sort();
   let csv = "\uFEFF"; // BOM para Excel
   csv += "HISTORIAL DE PARTIDOS\r\n";
-  csv += "Fecha,1° lugar (5 pts),2° lugar (3 pts),3° lugar (1 pt)\r\n";
+  csv += "Fecha,1° lugar (5 pts),2° lugar (3 pts),3° lugar (1 pt),Penalidades\r\n";
   entriesCache.forEach(e => {
-    csv += `${e.date},"${e.first}","${e.second}","${e.third}"\r\n`;
+    csv += `${e.date},"${e.first}","${e.second}","${e.third}","${(e.penalties || []).join(" / ")}"\r\n`;
   });
   csv += "\r\n";
   years.forEach(yr => {
@@ -858,6 +943,159 @@ function render() {
   renderStatsTable(entriesCache);
   renderHistory(entriesCache);
 }
+
+// ── Mini game: tiro libre ─────────────────────────────────────
+// Barra de potencia oscilante; frenala en la zona verde para encestar.
+(function initGame() {
+  const cv  = document.getElementById("gameCanvas");
+  const ctx = cv.getContext("2d");
+  const BALL_START = { x: 55, y: 195 };
+  const HOOP = { x: 252, y: 95 };          // centro del aro
+  const SWEET = { min: 62, max: 78 };      // zona verde de la barra
+  const PERFECT = (SWEET.min + SWEET.max) / 2;
+
+  let power = 0, dir = 1;
+  let shooting = false;
+  let ball = { x: BALL_START.x, y: BALL_START.y };
+  let score = 0, streak = 0;
+  let flash = null;                        // mensaje temporal ("¡Encestó!" / "Afuera")
+
+  function drawCourt() {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    // piso
+    ctx.fillStyle = "#c2410c";
+    ctx.fillRect(0, 210, cv.width, 30);
+    ctx.strokeStyle = "rgba(255,255,255,.5)";
+    ctx.strokeRect(-5, 215, cv.width + 10, 40);
+    // tablero
+    ctx.fillStyle = "#fff7ed";
+    ctx.fillRect(HOOP.x + 18, HOOP.y - 45, 10, 70);
+    ctx.strokeStyle = "#9a3412";
+    ctx.strokeRect(HOOP.x + 18, HOOP.y - 45, 10, 70);
+    // poste
+    ctx.fillStyle = "#78350f";
+    ctx.fillRect(HOOP.x + 24, HOOP.y + 25, 6, 95);
+    // aro
+    ctx.strokeStyle = "#dc2626";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(HOOP.x - 18, HOOP.y);
+    ctx.lineTo(HOOP.x + 18, HOOP.y);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    // red
+    ctx.strokeStyle = "rgba(255,255,255,.85)";
+    for (let i = -15; i <= 15; i += 6) {
+      ctx.beginPath();
+      ctx.moveTo(HOOP.x + i, HOOP.y + 2);
+      ctx.lineTo(HOOP.x + i * 0.55, HOOP.y + 22);
+      ctx.stroke();
+    }
+  }
+
+  function drawBall() {
+    ctx.font = "26px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("🏀", ball.x, ball.y);
+  }
+
+  function drawPowerBar() {
+    const x = 18, y = 40, w = 14, h = 150;
+    ctx.fillStyle = "rgba(255,255,255,.6)";
+    ctx.fillRect(x, y, w, h);
+    // zona verde
+    const zy = y + h - (SWEET.max / 100) * h;
+    const zh = ((SWEET.max - SWEET.min) / 100) * h;
+    ctx.fillStyle = "#22c55e";
+    ctx.fillRect(x, zy, w, zh);
+    // nivel actual
+    const py = y + h - (power / 100) * h;
+    ctx.fillStyle = "#dc2626";
+    ctx.fillRect(x - 3, py - 2, w + 6, 4);
+    ctx.strokeStyle = "#9a3412";
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  function drawFlash() {
+    if (!flash) return;
+    ctx.font = "bold 20px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.fillStyle = flash.ok ? "#15803d" : "#dc2626";
+    ctx.fillText(flash.text, cv.width / 2, 28);
+  }
+
+  function loop() {
+    if (!shooting) {
+      power += dir * 2.2;
+      if (power >= 100) { power = 100; dir = -1; }
+      if (power <= 0)   { power = 0;   dir = 1; }
+    }
+    drawCourt();
+    drawPowerBar();
+    drawBall();
+    drawFlash();
+    requestAnimationFrame(loop);
+  }
+
+  window.shoot = function () {
+    if (shooting) return;
+    shooting = true;
+    document.getElementById("shootBtn").disabled = true;
+    flash = null;
+
+    const scored = power >= SWEET.min && power <= SWEET.max;
+    // qué tan lejos llega la pelota según la potencia (PERFECT = justo al aro)
+    const reach = power / PERFECT;
+    const landX = BALL_START.x + (HOOP.x - BALL_START.x) * reach;
+    const landY = scored ? HOOP.y : (reach > 1 ? HOOP.y - 8 : HOOP.y + 30);
+    const peak  = 120 + power * 0.4;
+    let t = 0;
+
+    function fly() {
+      t += 0.025;
+      const k = Math.min(t, 1);
+      ball.x = BALL_START.x + (landX - BALL_START.x) * k;
+      ball.y = BALL_START.y + (landY - BALL_START.y) * k - peak * 4 * k * (1 - k) * 0.55;
+      if (k < 1) { requestAnimationFrame(fly); return; }
+
+      if (scored) {
+        score++; streak++;
+        flash = { ok: true, text: streak >= 3 ? `¡Encestó! Racha de ${streak} 🔥` : "¡Encestó! 🎉" };
+        // caída por la red
+        let dropY = ball.y;
+        (function drop() {
+          dropY += 5;
+          ball.y = dropY;
+          if (dropY < HOOP.y + 60) requestAnimationFrame(drop);
+          else finish();
+        })();
+      } else {
+        streak = 0;
+        flash = { ok: false, text: power < SWEET.min ? "Corto… 😬" : "¡Muy fuerte! 😅" };
+        finish();
+      }
+    }
+
+    function finish() {
+      document.getElementById("gScore").textContent = `Encestados: ${score}`;
+      document.getElementById("gStreak").textContent = `Racha: ${streak} 🔥`;
+      setTimeout(() => {
+        ball = { x: BALL_START.x, y: BALL_START.y };
+        shooting = false;
+        document.getElementById("shootBtn").disabled = false;
+      }, 700);
+      setTimeout(() => { flash = null; }, 1800);
+    }
+
+    fly();
+  };
+
+  // también se puede tirar tocando la cancha
+  cv.addEventListener("pointerdown", () => window.shoot());
+
+  loop();
+})();
 </script>
 </body>
 </html>
