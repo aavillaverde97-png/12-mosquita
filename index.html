@@ -383,6 +383,23 @@
     </table>
   </div>
 
+  <!-- ── Mini game ── -->
+  <div class="card">
+    <h2>🏀 Tiro libre <small style="font-weight:400;color:#71717a;font-size:.82rem;">(la zona verde se achica con cada enceste)</small></h2>
+    <div class="field">
+      <label for="gamePlayer">¿Quién juega? (elegite para guardar tu récord)</label>
+      <select id="gamePlayer"><option value="">— Elegir jugador —</option></select>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.88rem;font-weight:700;color:#7c2d12;margin-bottom:10px;">
+      <span id="gScore">Encestados: 0</span>
+      <span id="gStreak">Racha: 0 🔥</span>
+    </div>
+    <canvas id="gameCanvas" width="320" height="240" style="width:100%;display:block;border-radius:14px;background:#fef3c7;image-rendering:pixelated;"></canvas>
+    <button class="btn-primary" id="shootBtn" style="margin-top:10px;" onclick="shoot()">Tirar 🏀</button>
+    <h2 style="margin-top:18px;">🏆 Top 3 histórico <small style="font-weight:400;color:#71717a;font-size:.82rem;">(mejor racha)</small></h2>
+    <div id="gameTop"></div>
+  </div>
+
   <!-- ── Export ── -->
   <div class="card">
     <h2>Estadísticas por jugador</h2>
@@ -407,23 +424,6 @@
     <div id="historyList"></div>
   </div>
 
-  <!-- ── Mini game ── -->
-  <div class="card">
-    <h2>🏀 Tiro libre <small style="font-weight:400;color:#71717a;font-size:.82rem;">(frená la barra en la zona verde)</small></h2>
-    <div class="field">
-      <label for="gamePlayer">¿Quién juega? (elegite para guardar tu récord)</label>
-      <select id="gamePlayer"><option value="">— Elegir jugador —</option></select>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:.88rem;font-weight:700;color:#7c2d12;margin-bottom:10px;">
-      <span id="gScore">Encestados: 0</span>
-      <span id="gStreak">Racha: 0 🔥</span>
-    </div>
-    <canvas id="gameCanvas" width="320" height="240" style="width:100%;display:block;border-radius:14px;background:linear-gradient(180deg,#fed7aa,#fdba74);"></canvas>
-    <button class="btn-primary" id="shootBtn" style="margin-top:10px;" onclick="shoot()">Tirar 🏀</button>
-    <h2 style="margin-top:18px;">🏆 Top 3 histórico <small style="font-weight:400;color:#71717a;font-size:.82rem;">(mejor racha)</small></h2>
-    <div id="gameTop"></div>
-  </div>
-
   <div class="card">
     <h2>Zona de peligro</h2>
     <div class="btn-row">
@@ -440,6 +440,9 @@
 
 <script>
 const WRITE_PIN = '1234';
+// PIN del dueño: es el ÚNICO que permite borrar resultados/penalidades,
+// borrar todo o migrar nombres. Cambialo antes de subir el archivo.
+const OWNER_PIN = '9999';
 // ═══════════════════════════════════════════════════════════════
 //  PASO 1: Pegá aquí tu firebaseConfig copiado de la consola
 // ═══════════════════════════════════════════════════════════════
@@ -626,6 +629,13 @@ function checkPin() {
   return false;
 }
 
+function checkOwnerPin() {
+  const value = prompt('PIN del dueño (solo el admin puede borrar datos):');
+  if (value === OWNER_PIN) return true;
+  if (value !== null) alert('PIN incorrecto. Solo el dueño puede hacer esto.');
+  return false;
+}
+
 // ── Init dropdowns ────────────────────────────────────────────
 (function initSelects() {
   ["sel1", "sel2", "sel3", "selPen", "gamePlayer"].forEach(id => {
@@ -724,7 +734,7 @@ function showPenError(msg) {
 }
 
 function deletePenalty(key) {
-  if (!checkPin()) return;
+  if (!checkOwnerPin()) return;
   if (!confirm("¿Borrar esta penalidad?")) return;
   db.ref(`${PEN_PATH}/${key}`).remove()
     .catch(e => alert("Error al borrar: " + e.message));
@@ -746,7 +756,7 @@ function showError(msg) {
 
 // ── Delete single entry ───────────────────────────────────────
 function deleteEntry(key) {
-  if (!checkPin()) return;
+  if (!checkOwnerPin()) return;
   if (!confirm("¿Borrar este resultado?")) return;
   db.ref(`${DB_PATH}/${key}`).remove()
     .catch(e => alert("Error al borrar: " + e.message));
@@ -775,7 +785,7 @@ function resetWeek() {
 
 // ── Build ranking ─────────────────────────────────────────────
 function migratePlayerNames() {
-  if (!checkPin()) return;
+  if (!checkOwnerPin()) return;
   if (!db) return alert("Firebase no estÃ¡ conectado.");
   if (entriesCache.length === 0) return alert("No hay datos para migrar.");
   if (!confirm(`Â¿Migrar nombres viejos a los nombres nuevos en ${entriesCache.length} resultados?\nEsto reescribe first, second y third en Firebase.`)) return;
@@ -793,7 +803,7 @@ function migratePlayerNames() {
 }
 
 function deleteAllEntries() {
-  if (!checkPin()) return;
+  if (!checkOwnerPin()) return;
   if (!confirm('¿Borrar TODOS los datos (resultados y penalidades)? Esta acción no se puede deshacer.\nLos récords del tiro libre se conservan.')) return;
   Promise.all([db.ref(DB_PATH).remove(), db.ref(PEN_PATH).remove()])
     .catch(e => alert("Error al borrar: " + e.message));
@@ -1038,10 +1048,13 @@ renderGameTop();
 (function initGame() {
   const cv  = document.getElementById("gameCanvas");
   const ctx = cv.getContext("2d");
-  const BALL_START = { x: 55, y: 195 };
-  const HOOP = { x: 252, y: 95 };          // centro del aro
-  const SWEET = { min: 62, max: 78 };      // zona verde de la barra
-  const PERFECT = (SWEET.min + SWEET.max) / 2;
+  const BALL_START = { x: 80, y: 180 };
+  const HOOP = { x: 240, y: 96 };          // centro del aro
+  const ZONE_CENTER = 70;                  // potencia perfecta
+  const ZONE_BASE   = 8;                   // media zona inicial (62–78)
+  const ZONE_MIN    = 2.5;                 // media zona mínima (con racha alta)
+  const SWISH       = 1.5;                 // margen del tiro perfecto
+  const BASE_SPEED  = 2.2;
 
   let power = 0, dir = 1;
   let shooting = false;
@@ -1049,78 +1062,133 @@ renderGameTop();
   let score = 0, streak = 0;
   let flash = null;                        // mensaje temporal ("¡Encestó!" / "Afuera")
 
+  // La zona verde se achica y la barra se acelera con la racha
+  function zone() {
+    const half = Math.max(ZONE_BASE - streak * 1.1, ZONE_MIN);
+    return { min: ZONE_CENTER - half, max: ZONE_CENTER + half };
+  }
+  function barSpeed() {
+    return BASE_SPEED + Math.min(streak * 0.25, BASE_SPEED); // tope: el doble
+  }
+
+  // ── Pixel art: todo se dibuja en una grilla de 80×60 bloques de 4px ──
+  const P = 4;
+  function px(gx, gy, gw, gh, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(gx) * P, Math.round(gy) * P, gw * P, gh * P);
+  }
+
+  // Look 8-bit de cada jugador (pelo); todos piel blanca, el resto morocho
+  const PLAYER_LOOKS = {
+    "Valentijn": { hair: "rubio" },
+    "Joaco":     { hair: "rubio" },
+    "Fede":      { hair: "rubio" },
+    "Leandro":   { hair: "rulos" },
+    "Sofi":      { hair: "negro", mujer: true },
+    "Thais":     { hair: "negro", mujer: true }
+  };
+  const HAIR_COLORS = { rubio: "#fbbf24", morocho: "#451a03", rulos: "#451a03", negro: "#1c1917" };
+  const SKIN = "#fcd9b8";
+
   function drawCourt() {
     ctx.clearRect(0, 0, cv.width, cv.height);
-    // piso
-    ctx.fillStyle = "#c2410c";
-    ctx.fillRect(0, 210, cv.width, 30);
-    ctx.strokeStyle = "rgba(255,255,255,.5)";
-    ctx.strokeRect(-5, 215, cv.width + 10, 40);
-    // tablero
-    ctx.fillStyle = "#fff7ed";
-    ctx.fillRect(HOOP.x + 18, HOOP.y - 45, 10, 70);
-    ctx.strokeStyle = "#9a3412";
-    ctx.strokeRect(HOOP.x + 18, HOOP.y - 45, 10, 70);
+    // parquet
+    px(0, 52, 80, 8, "#b45309");
+    for (let i = 0; i < 80; i += 8) px(i + (Math.floor(i / 8) % 2) * 4, 54, 4, 1, "#92400e");
+    px(0, 51, 80, 1, "#7c2d12");
     // poste
-    ctx.fillStyle = "#78350f";
-    ctx.fillRect(HOOP.x + 24, HOOP.y + 25, 6, 95);
-    // aro
-    ctx.strokeStyle = "#dc2626";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(HOOP.x - 18, HOOP.y);
-    ctx.lineTo(HOOP.x + 18, HOOP.y);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-    // red
-    ctx.strokeStyle = "rgba(255,255,255,.85)";
-    for (let i = -15; i <= 15; i += 6) {
-      ctx.beginPath();
-      ctx.moveTo(HOOP.x + i, HOOP.y + 2);
-      ctx.lineTo(HOOP.x + i * 0.55, HOOP.y + 22);
-      ctx.stroke();
+    px(64, 25, 2, 26, "#57534e");
+    px(63, 50, 4, 1, "#44403c");
+    // tablero
+    px(63, 12, 3, 13, "#f5f5f4");
+    px(63, 12, 3, 1, "#a8a29e");
+    px(63, 24, 3, 1, "#a8a29e");
+    px(63, 16, 1, 4, "#dc2626");
+    // aro (el centro queda en HOOP.x)
+    px(57, 24, 6, 1, "#dc2626");
+    // red en zigzag
+    px(57, 25, 1, 2, "#fafafa"); px(59, 25, 1, 2, "#fafafa"); px(61, 25, 1, 2, "#fafafa");
+    px(58, 27, 1, 2, "#fafafa"); px(60, 27, 1, 2, "#fafafa");
+    px(59, 29, 1, 1, "#fafafa");
+  }
+
+  function drawPlayer() {
+    const who  = normalizePlayerName(document.getElementById("gamePlayer").value);
+    const look = PLAYER_LOOKS[who] || { hair: "morocho" };
+    const HAIR = HAIR_COLORS[look.hair];
+    const fx = 13, fy = 51;               // pies sobre el parquet
+    // piernas y zapas
+    px(fx + 1, fy - 4, 1, 3, SKIN); px(fx + 3, fy - 4, 1, 3, SKIN);
+    px(fx + 1, fy - 1, 1, 1, "#f5f5f4"); px(fx + 3, fy - 1, 1, 1, "#f5f5f4");
+    // short y camiseta
+    px(fx, fy - 6, 5, 2, "#fafafa");
+    px(fx, fy - 11, 5, 5, "#ea580c");
+    // brazos (arriba cuando tira)
+    if (shooting) {
+      px(fx - 1, fy - 13, 1, 3, SKIN); px(fx + 5, fy - 13, 1, 3, SKIN);
+    } else {
+      px(fx - 1, fy - 11, 1, 4, SKIN); px(fx + 5, fy - 11, 1, 4, SKIN);
     }
+    // cabeza
+    px(fx + 1, fy - 15, 3, 4, SKIN);
+    // pelo según el jugador
+    if (look.mujer) {
+      px(fx, fy - 16, 5, 2, HAIR);                              // flequillo
+      px(fx, fy - 15, 1, 5, HAIR); px(fx + 4, fy - 15, 1, 5, HAIR); // pelo largo
+    } else if (look.hair === "rulos") {
+      px(fx + 1, fy - 16, 3, 1, HAIR);
+      px(fx, fy - 16, 1, 2, HAIR); px(fx + 4, fy - 16, 1, 2, HAIR);
+      px(fx + 1, fy - 17, 1, 1, HAIR); px(fx + 3, fy - 17, 1, 1, HAIR); // rulitos
+    } else {
+      px(fx + 1, fy - 16, 3, 1, HAIR);
+      px(fx, fy - 15, 1, 1, HAIR); px(fx + 4, fy - 15, 1, 1, HAIR);
+    }
+    // ojo (de perfil, mirando al aro)
+    px(fx + 3, fy - 14, 1, 1, "#1c1917");
   }
 
   function drawBall() {
-    ctx.font = "26px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("🏀", ball.x, ball.y);
+    const gx = Math.round(ball.x / P), gy = Math.round(ball.y / P);
+    px(gx, gy - 2, 2, 1, "#ea580c");
+    px(gx - 1, gy - 1, 4, 2, "#f97316");
+    px(gx, gy + 1, 2, 1, "#ea580c");
+    px(gx, gy - 1, 1, 1, "#b45309");      // costuras
+    px(gx + 1, gy, 1, 1, "#b45309");
   }
 
   function drawPowerBar() {
-    const x = 18, y = 40, w = 14, h = 150;
-    ctx.fillStyle = "rgba(255,255,255,.6)";
-    ctx.fillRect(x, y, w, h);
-    // zona verde
-    const zy = y + h - (SWEET.max / 100) * h;
-    const zh = ((SWEET.max - SWEET.min) / 100) * h;
-    ctx.fillStyle = "#22c55e";
-    ctx.fillRect(x, zy, w, zh);
+    const x = 4, y = 10, w = 4, h = 38;   // en grilla
+    px(x - 1, y - 1, w + 2, h + 2, "#7c2d12");
+    px(x, y, w, h, "#fff7ed");
+    // zona verde (dinámica según la racha)
+    const z = zone();
+    const zy = y + h - Math.round((z.max / 100) * h);
+    const zh = Math.max(1, Math.round(((z.max - z.min) / 100) * h));
+    px(x, zy, w, zh, "#22c55e");
+    // línea del swish (centro exacto)
+    px(x, y + h - Math.round((ZONE_CENTER / 100) * h), w, 1, "#15803d");
     // nivel actual
-    const py = y + h - (power / 100) * h;
-    ctx.fillStyle = "#dc2626";
-    ctx.fillRect(x - 3, py - 2, w + 6, 4);
-    ctx.strokeStyle = "#9a3412";
-    ctx.strokeRect(x, y, w, h);
+    px(x - 1, y + h - Math.round((power / 100) * h), w + 2, 1, "#dc2626");
   }
 
   function drawFlash() {
     if (!flash) return;
-    ctx.font = "bold 20px Trebuchet MS";
+    ctx.font = "bold 14px 'Courier New', monospace";
     ctx.textAlign = "center";
+    ctx.fillStyle = "#7c2d12";
+    ctx.fillText(flash.text, cv.width / 2 + 1, 25);
     ctx.fillStyle = flash.ok ? "#15803d" : "#dc2626";
-    ctx.fillText(flash.text, cv.width / 2, 28);
+    ctx.fillText(flash.text, cv.width / 2, 24);
   }
 
   function loop() {
     if (!shooting) {
-      power += dir * 2.2;
+      power += dir * barSpeed();
       if (power >= 100) { power = 100; dir = -1; }
       if (power <= 0)   { power = 0;   dir = 1; }
     }
     drawCourt();
+    drawPlayer();
     drawPowerBar();
     drawBall();
     drawFlash();
@@ -1133,9 +1201,11 @@ renderGameTop();
     document.getElementById("shootBtn").disabled = true;
     flash = null;
 
-    const scored = power >= SWEET.min && power <= SWEET.max;
-    // qué tan lejos llega la pelota según la potencia (PERFECT = justo al aro)
-    const reach = power / PERFECT;
+    const z = zone();
+    const scored = power >= z.min && power <= z.max;
+    const swish  = scored && Math.abs(power - ZONE_CENTER) <= SWISH;
+    // qué tan lejos llega la pelota según la potencia (ZONE_CENTER = justo al aro)
+    const reach = power / ZONE_CENTER;
     const landX = BALL_START.x + (HOOP.x - BALL_START.x) * reach;
     const landY = scored ? HOOP.y : (reach > 1 ? HOOP.y - 8 : HOOP.y + 30);
     const peak  = 120 + power * 0.4;
@@ -1149,9 +1219,11 @@ renderGameTop();
       if (k < 1) { requestAnimationFrame(fly); return; }
 
       if (scored) {
-        score++; streak++;
+        score++;
+        streak += swish ? 2 : 1;           // tiro perfecto: bonus de racha
         saveGameRecord(streak);
-        flash = { ok: true, text: streak >= 3 ? `¡Encestó! Racha de ${streak} 🔥` : "¡Encestó! 🎉" };
+        flash = { ok: true, text: swish ? `¡LIMPIA! 💦 +2 de racha (${streak})`
+                                        : streak >= 3 ? `¡Encestó! Racha de ${streak} 🔥` : "¡Encestó! 🎉" };
         // caída por la red
         let dropY = ball.y;
         (function drop() {
@@ -1162,7 +1234,7 @@ renderGameTop();
         })();
       } else {
         streak = 0;
-        flash = { ok: false, text: power < SWEET.min ? "Corto… 😬" : "¡Muy fuerte! 😅" };
+        flash = { ok: false, text: power < z.min ? "Corto… 😬" : "¡Muy fuerte! 😅" };
         finish();
       }
     }
