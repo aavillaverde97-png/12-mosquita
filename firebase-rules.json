@@ -1,0 +1,15 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "basketball": {
+      "game": {
+        "topRachas": {
+          "$player": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 40 && newData.val() <= (data.exists() ? data.val() + 2 : 2) && ($player === 'Nareg' || $player === 'Gabo' || $player === 'Santi P' || $player === 'Nico' || $player === 'Santi A' || $player === 'Juani' || $player === 'Niels' || $player === 'Maxi' || $player === 'Sofi' || $player === 'Franco' || $player === 'Alex' || $player === 'Guille' || $player === 'Thais' || $player === 'Fede' || $player === 'Agus' || $player === 'Leandro' || $player === 'Martin' || $player === 'Nacho' || $player === 'Gonza' || $player === 'Joaco' || $player === 'Ale' || $player === 'Valentijn')"
+          }
+        }
+      }
+    }
+  }
+}

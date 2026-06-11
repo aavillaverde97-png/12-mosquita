@@ -1015,9 +1015,13 @@ function render() {
 }
 
 // ── Game high scores (mejor racha por jugador) ────────────────
+// Tope plausible de racha: cualquier valor mayor se considera trucho
+// y no se muestra (tiene que coincidir con el tope de las reglas de Firebase).
+const MAX_RECORD = 40;
+
 function saveGameRecord(streak) {
   const who = normalizePlayerName(document.getElementById("gamePlayer").value);
-  if (!who || !db) return;
+  if (!who || !db || streak > MAX_RECORD) return;
   if (streak > (gameScores[who] || 0)) {
     gameScores[who] = streak; // optimista; el listener confirma
     renderGameTop();
@@ -1028,6 +1032,9 @@ function saveGameRecord(streak) {
 function renderGameTop() {
   const el = document.getElementById("gameTop");
   const top = Object.entries(gameScores)
+    .filter(([name, best]) =>
+      PLAYERS.includes(name) &&                       // nada de "Roberto"
+      Number.isInteger(best) && best >= 1 && best <= MAX_RECORD)
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 3);
   if (top.length === 0) {
