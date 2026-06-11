@@ -138,25 +138,8 @@
   .badge-pen { background: #ef4444; }
 
   /* ── Penalties ── */
-  .pen-row { display: flex; gap: 8px; }
-  .pen-row select { flex: 1; }
-  .pen-add-btn {
-    width: auto; min-height: 44px; flex-shrink: 0;
-    padding: 0 14px; font-size: .85rem; border-radius: 8px;
-    background: #fff; color: #dc2626; border: 1.5px solid #fca5a5;
-  }
-  .pen-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .pen-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca;
-    border-radius: 999px; padding: 4px 6px 4px 11px;
-    font-size: .82rem; font-weight: 700;
-  }
-  .pen-chip button {
-    min-height: auto; width: auto; padding: 0 5px;
-    background: none; border: none; color: #b91c1c; font-size: .9rem;
-  }
   .hist-pen { color: #b91c1c; font-size: .78rem; font-weight: 600; margin-top: 3px; }
+  .hint { font-size: .78rem; color: #71717a; margin-top: 8px; }
 
   /* ── Buttons ── */
   button {
@@ -360,15 +343,23 @@
       <label class="pos-label"><span class="badge badge-3">3</span> 3er lugar (+1 pt)</label>
       <select id="sel3"><option value="">— Elegir jugador —</option></select>
     </div>
-    <div class="field">
-      <label class="pos-label"><span class="badge badge-pen">!</span> Penalidades (opcional, pueden ser varias)</label>
-      <div class="pen-row">
-        <select id="selPen"><option value="">— Elegir jugador —</option></select>
-        <button type="button" class="pen-add-btn" onclick="addPenalty()">+ Agregar</button>
-      </div>
-      <div id="penList" class="pen-chips"></div>
-    </div>
     <button class="btn-primary" id="saveBtn" onclick="saveEntry()">Guardar resultado</button>
+  </div>
+
+  <!-- ── Penalty form ── -->
+  <div class="card">
+    <h2><span class="badge badge-pen" style="vertical-align:middle;">!</span> Cargar penalidad</h2>
+    <div id="penError" class="msg msg-error" style="margin-top:10px;"></div>
+    <div class="field" style="margin-top:10px;">
+      <label for="penDate">Fecha de la penalidad</label>
+      <input type="date" id="penDate">
+    </div>
+    <div class="field">
+      <label for="selPen">Jugador penalizado</label>
+      <select id="selPen"><option value="">— Elegir jugador —</option></select>
+    </div>
+    <button class="btn-primary" id="penBtn" onclick="savePenalty()">Guardar penalidad</button>
+    <p class="hint" id="penHint"></p>
   </div>
 
   <!-- ── Weekly ranking ── -->
@@ -419,12 +410,18 @@
   <!-- ── Mini game ── -->
   <div class="card">
     <h2>🏀 Tiro libre <small style="font-weight:400;color:#71717a;font-size:.82rem;">(frená la barra en la zona verde)</small></h2>
+    <div class="field">
+      <label for="gamePlayer">¿Quién juega? (elegite para guardar tu récord)</label>
+      <select id="gamePlayer"><option value="">— Elegir jugador —</option></select>
+    </div>
     <div style="display:flex;justify-content:space-between;font-size:.88rem;font-weight:700;color:#7c2d12;margin-bottom:10px;">
       <span id="gScore">Encestados: 0</span>
       <span id="gStreak">Racha: 0 🔥</span>
     </div>
     <canvas id="gameCanvas" width="320" height="240" style="width:100%;display:block;border-radius:14px;background:linear-gradient(180deg,#fed7aa,#fdba74);"></canvas>
     <button class="btn-primary" id="shootBtn" style="margin-top:10px;" onclick="shoot()">Tirar 🏀</button>
+    <h2 style="margin-top:18px;">🏆 Top 3 histórico <small style="font-weight:400;color:#71717a;font-size:.82rem;">(mejor racha)</small></h2>
+    <div id="gameTop"></div>
   </div>
 
   <div class="card">
@@ -507,14 +504,20 @@ const PLAYER_ALIASES = {
   };
 
 const POINTS = { first: 5, second: 3, third: 1 };
-// Puntos que resta/suma cada penalidad en los rankings.
-// Por defecto 0 = solo se cuenta. Cambiá a -1 (o lo que sea) si querés que reste.
-const PENALTY_POINTS = 0;
-const DB_PATH = "basketball/entries";
+// Puntos que resta cada penalidad. Solo afecta el ranking ANUAL
+// (y las estadísticas); el ranking semanal no cambia.
+const PENALTY_POINTS = -1;
+const DB_PATH  = "basketball/entries";
+const PEN_PATH = "basketball/penalties";
+const GAME_PATH = "basketball/game/topRachas";
 
-// ── In-memory cache updated by the Firebase listener ─────────
-// Each item: { key: firebasePushId, date, first, second, third }
+// ── In-memory caches updated by the Firebase listeners ───────
+// entriesCache:   { key, date, first, second, third }
+// penaltiesCache: { key, date, player }
+// gameScores:     { nombre: mejorRacha }
 let entriesCache = [];
+let penaltiesCache = [];
+let gameScores = {};
 
 function normalizePlayerName(name) {
   if (!name) return name;
@@ -557,6 +560,21 @@ if (configIsPlaceholder) {
       setStatus("error", "Error de conexión: " + err.message);
     });
 
+    // Penalties listener
+    db.ref(PEN_PATH).on("value", snapshot => {
+      const raw = snapshot.val() || {};
+      penaltiesCache = Object.entries(raw)
+        .map(([key, val]) => ({ key, date: val.date, player: normalizePlayerName(val.player) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      render();
+    });
+
+    // Game high scores listener
+    db.ref(GAME_PATH).on("value", snapshot => {
+      gameScores = snapshot.val() || {};
+      renderGameTop();
+    });
+
     // Detect offline/online
     db.ref(".info/connected").on("value", snap => {
       if (snap.val()) {
@@ -577,6 +595,7 @@ function setStatus(type, text) {
   bar.className = type === "connected" ? "connected" : type === "error" ? "error" : "";
   document.getElementById("statusText").textContent = text;
   document.getElementById("saveBtn").disabled = type !== "connected";
+  document.getElementById("penBtn").disabled  = type !== "connected";
 }
 
 // ── Date helpers ──────────────────────────────────────────────
@@ -609,7 +628,7 @@ function checkPin() {
 
 // ── Init dropdowns ────────────────────────────────────────────
 (function initSelects() {
-  ["sel1", "sel2", "sel3", "selPen"].forEach(id => {
+  ["sel1", "sel2", "sel3", "selPen", "gamePlayer"].forEach(id => {
     const sel = document.getElementById(id);
     PLAYERS.forEach(p => {
       const opt = document.createElement("option");
@@ -618,6 +637,9 @@ function checkPin() {
     });
   });
   document.getElementById("dateInput").value = todayStr();
+  document.getElementById("penDate").value = todayStr();
+  document.getElementById("penHint").textContent =
+    `Resta ${Math.abs(PENALTY_POINTS)} pt en el ranking anual; el semanal no cambia. Si fueron varios jugadores, cargá una penalidad por cada uno.`;
   document.getElementById("weekLabel").textContent = `(Semana ${currentWeek().week}, ${currentWeek().year})`;
   document.getElementById("yearLabel").textContent  = `(${currentYear()})`;
 })();
@@ -653,31 +675,6 @@ function drawPositions() {
   `;
 }
 
-// ── Penalties (pending list before saving) ────────────────────
-let pendingPenalties = [];
-
-function addPenalty() {
-  document.getElementById("formError").classList.remove("visible");
-  const sel  = document.getElementById("selPen");
-  const name = normalizePlayerName(sel.value);
-  if (!name) return showError("Elegí un jugador para la penalidad.");
-  if (pendingPenalties.includes(name)) return showError(`${name} ya tiene penalidad agregada.`);
-  pendingPenalties.push(name);
-  sel.value = "";
-  renderPendingPenalties();
-}
-
-function removePenalty(name) {
-  pendingPenalties = pendingPenalties.filter(p => p !== name);
-  renderPendingPenalties();
-}
-
-function renderPendingPenalties() {
-  document.getElementById("penList").innerHTML = pendingPenalties.map(p =>
-    `<span class="pen-chip">⚠ ${p}<button type="button" onclick="removePenalty('${p}')" title="Quitar">✕</button></span>`
-  ).join("");
-}
-
 function saveEntry() {
   if (!checkPin()) return;
   document.getElementById("formError").classList.remove("visible");
@@ -691,17 +688,54 @@ function saveEntry() {
   if (!first || !second || !third)              return showError("Completá los tres puestos.");
   if (new Set([first, second, third]).size < 3) return showError("Cada puesto debe tener un jugador diferente.");
 
-  const entry = { date, first, second, third };
-  if (pendingPenalties.length) entry.penalties = pendingPenalties;
-
-  db.ref(DB_PATH).push(entry)
+  db.ref(DB_PATH).push({ date, first, second, third })
     .then(() => {
-      ["sel1", "sel2", "sel3", "selPen"].forEach(id => document.getElementById(id).value = "");
-      pendingPenalties = [];
-      renderPendingPenalties();
+      ["sel1", "sel2", "sel3"].forEach(id => document.getElementById(id).value = "");
       document.getElementById("dateInput").value = todayStr();
     })
     .catch(e => showError("Error al guardar: " + e.message));
+}
+
+// ── Penalties: save / delete / combined list ──────────────────
+// Una penalidad es un registro propio: { date, player }.
+// allPenalties() suma las viejas que quedaron guardadas dentro de un resultado.
+function savePenalty() {
+  if (!checkPin()) return;
+  document.getElementById("penError").classList.remove("visible");
+
+  const date   = document.getElementById("penDate").value;
+  const player = normalizePlayerName(document.getElementById("selPen").value);
+
+  if (!date)   return showPenError("Seleccioná la fecha de la penalidad.");
+  if (!player) return showPenError("Elegí al jugador penalizado.");
+
+  db.ref(PEN_PATH).push({ date, player })
+    .then(() => {
+      document.getElementById("selPen").value = "";
+      document.getElementById("penDate").value = todayStr();
+    })
+    .catch(e => showPenError("Error al guardar: " + e.message));
+}
+
+function showPenError(msg) {
+  const el = document.getElementById("penError");
+  el.textContent = msg;
+  el.classList.add("visible");
+}
+
+function deletePenalty(key) {
+  if (!checkPin()) return;
+  if (!confirm("¿Borrar esta penalidad?")) return;
+  db.ref(`${PEN_PATH}/${key}`).remove()
+    .catch(e => alert("Error al borrar: " + e.message));
+}
+
+function allPenalties() {
+  const legacy = [];
+  entriesCache.forEach(e =>
+    (e.penalties || []).forEach(player => legacy.push({ key: null, date: e.date, player }))
+  );
+  return [...penaltiesCache, ...legacy].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function showError(msg) {
@@ -760,26 +794,26 @@ function migratePlayerNames() {
 
 function deleteAllEntries() {
   if (!checkPin()) return;
-  if (!confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) return;
-  db.ref('basketball/entries').remove()
+  if (!confirm('¿Borrar TODOS los datos (resultados y penalidades)? Esta acción no se puede deshacer.\nLos récords del tiro libre se conservan.')) return;
+  Promise.all([db.ref(DB_PATH).remove(), db.ref(PEN_PATH).remove()])
     .catch(e => alert("Error al borrar: " + e.message));
 }
 
-function buildRanking(entries) {
+function buildRanking(entries, penalties = []) {
   const totals = {};
   PLAYERS.forEach(p => totals[p] = 0);
   entries.forEach(e => {
     totals[e.first]  = (totals[e.first]  || 0) + POINTS.first;
     totals[e.second] = (totals[e.second] || 0) + POINTS.second;
     totals[e.third]  = (totals[e.third]  || 0) + POINTS.third;
-    (e.penalties || []).forEach(p => { totals[p] = (totals[p] || 0) + PENALTY_POINTS; });
   });
+  penalties.forEach(p => { totals[p.player] = (totals[p.player] || 0) + PENALTY_POINTS; });
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
 
 // ── Render ranking table ──────────────────────────────────────
 const MEDALS = ["🥇", "🥈", "🥉"];
-function buildPlayerStats(entries) {
+function buildPlayerStats(entries, penalties = []) {
   const stats = {};
   const blankStats = name => ({ name, points: 0, games: entries.length, wins: 0, seconds: 0, thirds: 0, podiums: 0, penalties: 0 });
   PLAYERS.forEach(name => { stats[name] = blankStats(name); });
@@ -800,13 +834,14 @@ function buildPlayerStats(entries) {
       stats[player].points += points;
     });
 
-    (e.penalties || []).forEach(name => {
-      const player = normalizePlayerName(name);
-      if (!player) return;
-      if (!stats[player]) stats[player] = blankStats(player);
-      stats[player].penalties += 1;
-      stats[player].points += PENALTY_POINTS;
-    });
+  });
+
+  penalties.forEach(p => {
+    const player = normalizePlayerName(p.player);
+    if (!player) return;
+    if (!stats[player]) stats[player] = blankStats(player);
+    stats[player].penalties += 1;
+    stats[player].points += PENALTY_POINTS;
   });
 
   return Object.values(stats).sort((a, b) =>
@@ -824,14 +859,14 @@ function formatAverage(points, games) {
   return (points / games).toFixed(1);
 }
 
-function renderStatsTable(entries) {
+function renderStatsTable(entries, penalties = []) {
   const tbody = document.getElementById("statsBody");
-  if (entries.length === 0) {
+  if (entries.length === 0 && penalties.length === 0) {
     tbody.innerHTML = `<tr><td colspan="9" class="empty">Sin datos todavía.</td></tr>`;
     return;
   }
 
-  const stats = buildPlayerStats(entries);
+  const stats = buildPlayerStats(entries, penalties);
 
   if (stats.length === 0) {
     tbody.innerHTML = `<tr><td colspan="9" class="empty">Sin datos todavía.</td></tr>`;
@@ -853,9 +888,9 @@ function renderStatsTable(entries) {
   ).join("");
 }
 
-function renderTable(bodyId, entries) {
+function renderTable(bodyId, entries, penalties = []) {
   const tbody   = document.getElementById(bodyId);
-  const ranking = buildRanking(entries).filter(([, pts]) => pts > 0);
+  const ranking = buildRanking(entries, penalties).filter(([, pts]) => pts !== 0);
   if (ranking.length === 0) {
     tbody.innerHTML = `<tr><td colspan="3" class="empty">Sin datos todavía.</td></tr>`;
     return;
@@ -870,16 +905,16 @@ function renderTable(bodyId, entries) {
 }
 
 // ── Render history ────────────────────────────────────────────
-function renderHistory(entries) {
+function renderHistory(entries, penalties = []) {
   const el = document.getElementById("historyList");
-  if (entries.length === 0) {
+  if (entries.length === 0 && penalties.length === 0) {
     el.innerHTML = `<p class="empty">Sin resultados cargados.</p>`;
     return;
   }
   const sm = (cls, n) =>
     `<span class="badge ${cls}" style="width:16px;height:16px;font-size:.6rem">${n}</span>`;
 
-  el.innerHTML = [...entries].reverse().map(e =>
+  const entryHtml = e =>
     `<div class="history-item">
       <div>
         <div class="history-date">${e.date}${e.weekReset ? ' <span style="font-size:.7rem;color:#a1a1aa;background:#f4f4f5;padding:1px 5px;border-radius:4px;">semana reseteada</span>' : ''}</div>
@@ -891,25 +926,48 @@ function renderHistory(entries) {
         ${(e.penalties && e.penalties.length) ? `<div class="hist-pen">⚠ Penalidad: ${e.penalties.join(", ")}</div>` : ""}
       </div>
       <button class="del-btn" onclick="deleteEntry('${e.key}')" title="Borrar">✕</button>
-    </div>`
-  ).join("");
+    </div>`;
+
+  const penaltyHtml = p =>
+    `<div class="history-item">
+      <div>
+        <div class="history-date">${p.date}</div>
+        <div class="hist-pen">⚠ Penalidad: ${p.player} (${PENALTY_POINTS} pt anual)</div>
+      </div>
+      <button class="del-btn" onclick="deletePenalty('${p.key}')" title="Borrar">✕</button>
+    </div>`;
+
+  const items = [
+    ...entries.map(e => ({ date: e.date, html: entryHtml(e) })),
+    ...penalties.filter(p => p.key).map(p => ({ date: p.date, html: penaltyHtml(p) }))
+  ].sort((a, b) => a.date.localeCompare(b.date));
+
+  el.innerHTML = items.reverse().map(i => i.html).join("");
 }
 
 // ── Export CSV ────────────────────────────────────────────────
 function exportCSV() {
-  if (entriesCache.length === 0) return alert("No hay datos para exportar.");
+  const pens = allPenalties();
+  if (entriesCache.length === 0 && pens.length === 0) return alert("No hay datos para exportar.");
 
-  const years = [...new Set(entriesCache.map(e => e.date.slice(0, 4)))].sort();
+  const years = [...new Set([...entriesCache, ...pens].map(e => e.date.slice(0, 4)))].sort();
   let csv = "\uFEFF"; // BOM para Excel
   csv += "HISTORIAL DE PARTIDOS\r\n";
-  csv += "Fecha,1° lugar (5 pts),2° lugar (3 pts),3° lugar (1 pt),Penalidades\r\n";
+  csv += "Fecha,1° lugar (5 pts),2° lugar (3 pts),3° lugar (1 pt)\r\n";
   entriesCache.forEach(e => {
-    csv += `${e.date},"${e.first}","${e.second}","${e.third}","${(e.penalties || []).join(" / ")}"\r\n`;
+    csv += `${e.date},"${e.first}","${e.second}","${e.third}"\r\n`;
   });
   csv += "\r\n";
+  if (pens.length) {
+    csv += `PENALIDADES (${PENALTY_POINTS} pt en ranking anual)\r\n`;
+    csv += "Fecha,Jugador\r\n";
+    pens.forEach(p => { csv += `${p.date},"${p.player}"\r\n`; });
+    csv += "\r\n";
+  }
   years.forEach(yr => {
     const yEntries = entriesCache.filter(e => e.date.startsWith(yr));
-    const ranking  = buildRanking(yEntries).filter(([, pts]) => pts > 0);
+    const yPens    = pens.filter(p => p.date.startsWith(yr));
+    const ranking  = buildRanking(yEntries, yPens).filter(([, pts]) => pts !== 0);
     csv += `RANKING ${yr}\r\n`;
     csv += "Puesto,Jugador,Puntos\r\n";
     ranking.forEach(([name, pts], i) => {
@@ -937,12 +995,43 @@ function render() {
     return w.week === week && w.year === wYear && !e.weekReset;
   });
   const yearEntries = entriesCache.filter(e => e.date.startsWith(String(year)));
+  const pens        = allPenalties();
+  const yearPens    = pens.filter(p => p.date.startsWith(String(year)));
 
-  renderTable("weeklyBody", weekEntries);
-  renderTable("annualBody", yearEntries);
-  renderStatsTable(entriesCache);
-  renderHistory(entriesCache);
+  renderTable("weeklyBody", weekEntries);                 // semanal: sin penalidades
+  renderTable("annualBody", yearEntries, yearPens);       // anual: con penalidades
+  renderStatsTable(entriesCache, pens);
+  renderHistory(entriesCache, penaltiesCache);
 }
+
+// ── Game high scores (mejor racha por jugador) ────────────────
+function saveGameRecord(streak) {
+  const who = normalizePlayerName(document.getElementById("gamePlayer").value);
+  if (!who || !db) return;
+  if (streak > (gameScores[who] || 0)) {
+    gameScores[who] = streak; // optimista; el listener confirma
+    renderGameTop();
+    db.ref(`${GAME_PATH}/${who}`).set(streak).catch(() => {});
+  }
+}
+
+function renderGameTop() {
+  const el = document.getElementById("gameTop");
+  const top = Object.entries(gameScores)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3);
+  if (top.length === 0) {
+    el.innerHTML = `<p class="empty">Todavía no hay récords. ¡Sé el primero!</p>`;
+    return;
+  }
+  el.innerHTML = top.map(([name, best], i) =>
+    `<div class="history-item">
+      <span>${MEDALS[i]} ${name}</span>
+      <strong>${best} seguido${best === 1 ? "" : "s"}</strong>
+    </div>`
+  ).join("");
+}
+renderGameTop();
 
 // ── Mini game: tiro libre ─────────────────────────────────────
 // Barra de potencia oscilante; frenala en la zona verde para encestar.
@@ -1061,6 +1150,7 @@ function render() {
 
       if (scored) {
         score++; streak++;
+        saveGameRecord(streak);
         flash = { ok: true, text: streak >= 3 ? `¡Encestó! Racha de ${streak} 🔥` : "¡Encestó! 🎉" };
         // caída por la red
         let dropY = ball.y;
@@ -1093,6 +1183,12 @@ function render() {
 
   // también se puede tirar tocando la cancha
   cv.addEventListener("pointerdown", () => window.shoot());
+
+  // si cambia el jugador, la racha arranca de cero
+  document.getElementById("gamePlayer").addEventListener("change", () => {
+    streak = 0;
+    document.getElementById("gStreak").textContent = "Racha: 0 🔥";
+  });
 
   loop();
 })();
