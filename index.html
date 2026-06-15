@@ -672,10 +672,10 @@ function checkOwnerPin() {
 })();
 
 // ── Sorteo con "grupo de la muerte" ───────────────────────────
-// El top 3 del ranking anual se sortea en posiciones CONSECUTIVAS:
+// El top 3 del ranking SEMANAL se sortea en posiciones CONSECUTIVAS:
 // se presionan entre ellos y no reparten presión por todo el orden.
-const DEATH_GROUP_SIZE = 3;
-
+// Se usa el semanal (no el anual) porque cambia cada semana y día a
+// día, así que para zafar tenés que venir bien ESA semana.
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -685,12 +685,14 @@ function shuffle(arr) {
 }
 
 function deathGroup() {
-  const year = String(currentYear());
-  const yearEntries = entriesCache.filter(e => e.date.startsWith(year));
-  const yearPens    = allPenalties().filter(p => p.date.startsWith(year));
-  return buildRanking(yearEntries, yearPens)
+  const { week, year } = currentWeek();
+  const weekEntries = entriesCache.filter(e => {
+    const w = isoWeekYear(e.date);
+    return w.week === week && w.year === year && !e.weekReset;
+  });
+  return buildRanking(weekEntries)        // semanal: sin penalidades
     .filter(([, pts]) => pts > 0)
-    .slice(0, DEATH_GROUP_SIZE)
+    .slice(0, 3)
     .map(([name]) => name);
 }
 
@@ -718,7 +720,7 @@ function drawPositions() {
   }
 
   const banner = hot.length >= 2
-    ? `<div class="death-banner">🔥 Grupo de la muerte (top anual, sortean juntos): <strong>${hot.join(", ")}</strong></div>`
+    ? `<div class="death-banner">🔥 Grupo de la muerte (top 3 de la semana, sortean juntos): <strong>${hot.join(", ")}</strong></div>`
     : "";
 
   document.getElementById("drawResult").innerHTML = `
