@@ -493,7 +493,6 @@ const PLAYERS = [
   "Agus",
   "Leandro",
   "Martin",
-  "Nacho",
   "Gonza",
   "Joaco",
   "Ale",
@@ -518,7 +517,8 @@ const PLAYER_ALIASES = {
   "Agus - El Homosapiens": "Agus",
   "Leandro - El meñique": "Leandro",
   "Martin - Marteeeen": "Martin",
-  "Nacho - Serrucho de goma": "Nacho",
+  "Nacho - Serrucho de goma": "Ale",
+  "Nacho": "Ale",
   "Joaco - Johnny bravo escalado por 0,5": "Joaco",
   "Ale - torres": "Ale",
   };
@@ -697,15 +697,23 @@ function deathGroup() {
 }
 
 function drawPositions() {
-  const hot = deathGroup();
+  const hot = deathGroup();             // [1°, 2°, 3°] del ranking semanal
   let shuffled;
   if (hot.length >= 2) {
+    const leader = hot[0];              // 1° semanal: siempre sortea DESPUÉS del bloque
+    const block  = hot.slice(1).reverse(); // [rank3, rank2] (o solo [rank2] si hay 2)
     const others = shuffle(PLAYERS.filter(p => !hot.includes(p)));
-    shuffle(hot);
-    const insertAt = Math.floor(Math.random() * (others.length + 1));
-    shuffled = [...others.slice(0, insertAt), ...hot, ...others.slice(insertAt)];
+
+    // Insertar el bloque de rank2/rank3 en posición aleatoria
+    const blockAt = Math.floor(Math.random() * (others.length + 1));
+    const withBlock = [...others.slice(0, blockAt), ...block, ...others.slice(blockAt)];
+
+    // El líder semanal va SIEMPRE en una posición posterior al bloque
+    const afterBlock = blockAt + block.length;
+    const leaderAt   = afterBlock + Math.floor(Math.random() * (withBlock.length - afterBlock + 1));
+    shuffled = [...withBlock.slice(0, leaderAt), leader, ...withBlock.slice(leaderAt)];
   } else {
-    shuffled = shuffle([...PLAYERS]); // sin datos del año todavía: sorteo común
+    shuffled = shuffle([...PLAYERS]); // sin datos de la semana todavía: sorteo común
   }
   const rankedPlayers = shuffled.map((player, index) => ({ rank: index + 1, player, hot: hot.includes(player) }));
   const columnCount = 2;
@@ -720,7 +728,7 @@ function drawPositions() {
   }
 
   const banner = hot.length >= 2
-    ? `<div class="death-banner">🔥 Grupo de la muerte (top 3 de la semana, sortean juntos): <strong>${hot.join(", ")}</strong></div>`
+    ? `<div class="death-banner">🔥 Grupo de la muerte: <strong>${hot.slice(1).join(", ")}</strong> sortean juntos · <strong>${hot[0]}</strong> (1° semanal) siempre sale después</div>`
     : "";
 
   document.getElementById("drawResult").innerHTML = `
