@@ -104,7 +104,7 @@
 
   /* ── Form elements ── */
   label { display: block; font-size: .85rem; font-weight: 500; margin-bottom: 4px; color: #52525b; }
-  select, input[type="date"] {
+  select, input[type="date"], input[type="number"] {
     width: 100%;
     min-height: 44px;
     border: 1.5px solid #d4d4d8;
@@ -117,7 +117,7 @@
     -webkit-appearance: none;
     cursor: pointer;
   }
-  select:focus, input[type="date"]:focus {
+  select:focus, input[type="date"]:focus, input[type="number"]:focus {
     outline: none;
     border-color: #6366f1;
     box-shadow: 0 0 0 3px rgba(99,102,241,.15);
@@ -295,6 +295,18 @@
     border: 1px solid #fecaca;
   }
 
+  /* ── Prize draw ── */
+  .prize-players { display: flex; flex-wrap: wrap; gap: 6px; }
+  .prize-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 11px; border-radius: 999px; cursor: pointer;
+    font-size: .85rem; font-weight: 700; color: #57534e;
+    background: #fff; border: 1.5px solid #e4e4e7;
+    user-select: none;
+  }
+  .prize-chip input { width: auto; margin: 0; accent-color: #ea580c; }
+  .prize-chip.on { color: #9a3412; background: #fff7ed; border-color: #fb923c; }
+
   @media (max-width: 480px) {
     .card { padding: 18px; border-radius: 20px; }
     .draw-header { align-items: flex-start; }
@@ -339,6 +351,31 @@
     </div>
     <button class="btn-primary" onclick="drawPositions()">🎲 Sortear</button>
     <div id="drawResult"></div>
+  </div>
+
+  <!-- ── Prize draw ── -->
+  <div class="card draw-card">
+    <div class="draw-header">
+      <div>
+        <h2>Sorteo de premios</h2>
+      </div>
+      <div class="draw-badge">🎁</div>
+    </div>
+    <div class="field">
+      <label>¿Quiénes participan? <span id="prizeCount" style="color:#71717a;font-weight:400;"></span></label>
+      <div id="prizePlayers" class="prize-players"></div>
+      <div class="btn-row">
+        <button class="btn-green" onclick="setPrizePlayers(true)">Todos</button>
+        <button class="btn-danger" onclick="setPrizePlayers(false)">Ninguno</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="prizeWinners">Cantidad de ganadores</label>
+      <input type="number" id="prizeWinners" min="1" value="1">
+    </div>
+    <button class="btn-primary" onclick="drawPrize()">🎁 Sortear premio</button>
+    <div id="prizeError" class="msg msg-error" style="margin-top:10px;"></div>
+    <div id="prizeResult" style="margin-top:14px;"></div>
   </div>
 
   <div class="card">
@@ -402,7 +439,6 @@
 
   <!-- ── Mini game ── -->
   <div class="card">
-    <h2>🏀 Tiro libre <small style="font-weight:400;color:#71717a;font-size:.82rem;">(la zona verde se achica con cada enceste)</small></h2>
     <div class="field">
       <label for="gamePlayer">¿Quién juega? (elegite para guardar tu récord)</label>
       <select id="gamePlayer"><option value="">— Elegir jugador —</option></select>
@@ -496,7 +532,9 @@ const PLAYERS = [
   "Gonza",
   "Joaco",
   "Ale",
-  "Valentijn"
+  "Valentijn",
+  "Pjotr",
+  "Caro"
 ];
 
 const PLAYER_ALIASES = {
@@ -663,6 +701,7 @@ function checkOwnerPin() {
       sel.appendChild(opt);
     });
   });
+  renderPrizePlayers();
   document.getElementById("dateInput").value = todayStr();
   document.getElementById("penDate").value = todayStr();
   document.getElementById("penHint").textContent =
@@ -738,6 +777,61 @@ function drawPositions() {
         <div class="draw-item${isHot ? " hot" : ""}">
           <div class="draw-rank">${rank}</div>
           <div class="draw-name">${player}${isHot ? " 🔥" : ""}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+// ── Sorteo de premios ─────────────────────────────────────────
+// Azar puro entre los jugadores tildados; no usa el grupo de la muerte.
+function renderPrizePlayers() {
+  document.getElementById("prizePlayers").innerHTML = PLAYERS.map(p => `
+    <label class="prize-chip"><input type="checkbox" value="${p}" onchange="updatePrizeCount()">${p}</label>
+  `).join("");
+  updatePrizeCount();
+}
+
+function selectedPrizePlayers() {
+  return [...document.querySelectorAll("#prizePlayers input:checked")].map(i => i.value);
+}
+
+function updatePrizeCount() {
+  document.querySelectorAll("#prizePlayers .prize-chip").forEach(chip => {
+    chip.classList.toggle("on", chip.querySelector("input").checked);
+  });
+  document.getElementById("prizeCount").textContent = `(${selectedPrizePlayers().length} de ${PLAYERS.length})`;
+}
+
+function setPrizePlayers(checked) {
+  document.querySelectorAll("#prizePlayers input").forEach(i => i.checked = checked);
+  updatePrizeCount();
+}
+
+function drawPrize() {
+  const err = document.getElementById("prizeError");
+  err.classList.remove("visible");
+  const pool = selectedPrizePlayers();
+  const winners = parseInt(document.getElementById("prizeWinners").value, 10);
+
+  let problem = "";
+  if (pool.length === 0) problem = "Tildá al menos un jugador.";
+  else if (!(winners >= 1)) problem = "La cantidad de ganadores tiene que ser 1 o más.";
+  else if (winners > pool.length) problem = `Hay ${pool.length} participantes, no alcanzan para ${winners} ganadores.`;
+  if (problem) {
+    err.textContent = problem;
+    err.classList.add("visible");
+    document.getElementById("prizeResult").innerHTML = "";
+    return;
+  }
+
+  const result = shuffle([...pool]).slice(0, winners);
+  document.getElementById("prizeResult").innerHTML = `
+    <div class="draw-grid">
+      ${result.map((player, i) => `
+        <div class="draw-item">
+          <div class="draw-rank">${winners === 1 ? "🏆" : i + 1}</div>
+          <div class="draw-name">${player}</div>
         </div>
       `).join("")}
     </div>
