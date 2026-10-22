@@ -437,22 +437,6 @@
     </table>
   </div>
 
-  <!-- ── Mini game ── -->
-  <div class="card">
-    <div class="field">
-      <label for="gamePlayer">¿Quién juega? (elegite para guardar tu récord)</label>
-      <select id="gamePlayer"><option value="">— Elegir jugador —</option></select>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:.88rem;font-weight:700;color:#7c2d12;margin-bottom:10px;">
-      <span id="gScore">Encestados: 0</span>
-      <span id="gStreak">Racha: 0 🔥</span>
-    </div>
-    <canvas id="gameCanvas" width="320" height="240" style="width:100%;display:block;border-radius:14px;background:#fef3c7;image-rendering:pixelated;"></canvas>
-    <button class="btn-primary" id="shootBtn" style="margin-top:10px;" onclick="shoot()">Tirar 🏀</button>
-    <h2 style="margin-top:18px;">🏆 Top 3 histórico <small style="font-weight:400;color:#71717a;font-size:.82rem;">(mejor racha)</small></h2>
-    <div id="gameTop"></div>
-  </div>
-
   <!-- ── Export ── -->
   <div class="card">
     <h2>Estadísticas por jugador</h2>
@@ -567,15 +551,12 @@ const POINTS = { first: 5, second: 3, third: 1 };
 const PENALTY_POINTS = -1;
 const DB_PATH  = "basketball/entries";
 const PEN_PATH = "basketball/penalties";
-const GAME_PATH = "basketball/game/topRachas";
 
 // ── In-memory caches updated by the Firebase listeners ───────
 // entriesCache:   { key, date, first, second, third }
 // penaltiesCache: { key, date, player }
-// gameScores:     { nombre: mejorRacha }
 let entriesCache = [];
 let penaltiesCache = [];
-let gameScores = {};
 
 function normalizePlayerName(name) {
   if (!name) return name;
@@ -625,12 +606,6 @@ if (configIsPlaceholder) {
         .map(([key, val]) => ({ key, date: val.date, player: normalizePlayerName(val.player) }))
         .sort((a, b) => a.date.localeCompare(b.date));
       render();
-    });
-
-    // Game high scores listener
-    db.ref(GAME_PATH).on("value", snapshot => {
-      gameScores = snapshot.val() || {};
-      renderGameTop();
     });
 
     // Detect offline/online
@@ -693,7 +668,7 @@ function checkOwnerPin() {
 
 // ── Init dropdowns ────────────────────────────────────────────
 (function initSelects() {
-  ["sel1", "sel2", "sel3", "selPen", "gamePlayer"].forEach(id => {
+  ["sel1", "sel2", "sel3", "selPen"].forEach(id => {
     const sel = document.getElementById(id);
     PLAYERS.forEach(p => {
       const opt = document.createElement("option");
@@ -1166,264 +1141,6 @@ function render() {
   renderStatsTable(entriesCache, pens);
   renderHistory(entriesCache, penaltiesCache);
 }
-
-// ── Game high scores (mejor racha por jugador) ────────────────
-// Tope plausible de racha: cualquier valor mayor se considera trucho
-// y no se muestra (tiene que coincidir con el tope de las reglas de Firebase).
-const MAX_RECORD = 40;
-
-function saveGameRecord(streak) {
-  const who = normalizePlayerName(document.getElementById("gamePlayer").value);
-  if (!who || !db || streak > MAX_RECORD) return;
-  if (streak > (gameScores[who] || 0)) {
-    gameScores[who] = streak; // optimista; el listener confirma
-    renderGameTop();
-    db.ref(`${GAME_PATH}/${who}`).set(streak).catch(() => {});
-  }
-}
-
-function renderGameTop() {
-  const el = document.getElementById("gameTop");
-  const top = Object.entries(gameScores)
-    .filter(([name, best]) =>
-      PLAYERS.includes(name) &&                       // nada de "Roberto"
-      Number.isInteger(best) && best >= 1 && best <= MAX_RECORD)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 3);
-  if (top.length === 0) {
-    el.innerHTML = `<p class="empty">Todavía no hay récords. ¡Sé el primero!</p>`;
-    return;
-  }
-  el.innerHTML = top.map(([name, best], i) =>
-    `<div class="history-item">
-      <span>${MEDALS[i]} ${name}</span>
-      <strong>${best} seguido${best === 1 ? "" : "s"}</strong>
-    </div>`
-  ).join("");
-}
-renderGameTop();
-
-// ── Mini game: tiro libre ─────────────────────────────────────
-// Barra de potencia oscilante; frenala en la zona verde para encestar.
-(function initGame() {
-  const cv  = document.getElementById("gameCanvas");
-  const ctx = cv.getContext("2d");
-  const BALL_START = { x: 80, y: 180 };
-  const HOOP = { x: 240, y: 96 };          // centro del aro
-  const ZONE_CENTER = 70;                  // potencia perfecta
-  const ZONE_BASE   = 8;                   // media zona inicial (62–78)
-  const ZONE_MIN    = 2.5;                 // media zona mínima (con racha alta)
-  const SWISH       = 1.5;                 // margen del tiro perfecto
-  const BASE_SPEED  = 2.2;
-
-  let power = 0, dir = 1;
-  let shooting = false;
-  let ball = { x: BALL_START.x, y: BALL_START.y };
-  let score = 0, streak = 0;
-  let flash = null;                        // mensaje temporal ("¡Encestó!" / "Afuera")
-
-  // La zona verde se achica y la barra se acelera con la racha
-  function zone() {
-    const half = Math.max(ZONE_BASE - streak * 1.1, ZONE_MIN);
-    return { min: ZONE_CENTER - half, max: ZONE_CENTER + half };
-  }
-  function barSpeed() {
-    return BASE_SPEED + Math.min(streak * 0.25, BASE_SPEED); // tope: el doble
-  }
-
-  // ── Pixel art: todo se dibuja en una grilla de 80×60 bloques de 4px ──
-  const P = 4;
-  function px(gx, gy, gw, gh, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(gx) * P, Math.round(gy) * P, gw * P, gh * P);
-  }
-
-  // Look 8-bit de cada jugador (pelo); todos piel blanca, el resto morocho
-  const PLAYER_LOOKS = {
-    "Valentijn": { hair: "rubio" },
-    "Joaco":     { hair: "rubio" },
-    "Fede":      { hair: "rubio" },
-    "Leandro":   { hair: "rulos" },
-    "Sofi":      { hair: "negro", mujer: true },
-    "Thais":     { hair: "negro", mujer: true }
-  };
-  const HAIR_COLORS = { rubio: "#fbbf24", morocho: "#451a03", rulos: "#451a03", negro: "#1c1917" };
-  const SKIN = "#fcd9b8";
-
-  function drawCourt() {
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    // parquet
-    px(0, 52, 80, 8, "#b45309");
-    for (let i = 0; i < 80; i += 8) px(i + (Math.floor(i / 8) % 2) * 4, 54, 4, 1, "#92400e");
-    px(0, 51, 80, 1, "#7c2d12");
-    // poste
-    px(64, 25, 2, 26, "#57534e");
-    px(63, 50, 4, 1, "#44403c");
-    // tablero
-    px(63, 12, 3, 13, "#f5f5f4");
-    px(63, 12, 3, 1, "#a8a29e");
-    px(63, 24, 3, 1, "#a8a29e");
-    px(63, 16, 1, 4, "#dc2626");
-    // aro (el centro queda en HOOP.x)
-    px(57, 24, 6, 1, "#dc2626");
-    // red en zigzag
-    px(57, 25, 1, 2, "#fafafa"); px(59, 25, 1, 2, "#fafafa"); px(61, 25, 1, 2, "#fafafa");
-    px(58, 27, 1, 2, "#fafafa"); px(60, 27, 1, 2, "#fafafa");
-    px(59, 29, 1, 1, "#fafafa");
-  }
-
-  function drawPlayer() {
-    const who  = normalizePlayerName(document.getElementById("gamePlayer").value);
-    const look = PLAYER_LOOKS[who] || { hair: "morocho" };
-    const HAIR = HAIR_COLORS[look.hair];
-    const fx = 13, fy = 51;               // pies sobre el parquet
-    // piernas y zapas
-    px(fx + 1, fy - 4, 1, 3, SKIN); px(fx + 3, fy - 4, 1, 3, SKIN);
-    px(fx + 1, fy - 1, 1, 1, "#f5f5f4"); px(fx + 3, fy - 1, 1, 1, "#f5f5f4");
-    // short y camiseta
-    px(fx, fy - 6, 5, 2, "#fafafa");
-    px(fx, fy - 11, 5, 5, "#ea580c");
-    // brazos (arriba cuando tira)
-    if (shooting) {
-      px(fx - 1, fy - 13, 1, 3, SKIN); px(fx + 5, fy - 13, 1, 3, SKIN);
-    } else {
-      px(fx - 1, fy - 11, 1, 4, SKIN); px(fx + 5, fy - 11, 1, 4, SKIN);
-    }
-    // cabeza
-    px(fx + 1, fy - 15, 3, 4, SKIN);
-    // pelo según el jugador
-    if (look.mujer) {
-      px(fx, fy - 16, 5, 2, HAIR);                              // flequillo
-      px(fx, fy - 15, 1, 5, HAIR); px(fx + 4, fy - 15, 1, 5, HAIR); // pelo largo
-    } else if (look.hair === "rulos") {
-      px(fx + 1, fy - 16, 3, 1, HAIR);
-      px(fx, fy - 16, 1, 2, HAIR); px(fx + 4, fy - 16, 1, 2, HAIR);
-      px(fx + 1, fy - 17, 1, 1, HAIR); px(fx + 3, fy - 17, 1, 1, HAIR); // rulitos
-    } else {
-      px(fx + 1, fy - 16, 3, 1, HAIR);
-      px(fx, fy - 15, 1, 1, HAIR); px(fx + 4, fy - 15, 1, 1, HAIR);
-    }
-    // ojo (de perfil, mirando al aro)
-    px(fx + 3, fy - 14, 1, 1, "#1c1917");
-  }
-
-  function drawBall() {
-    const gx = Math.round(ball.x / P), gy = Math.round(ball.y / P);
-    px(gx, gy - 2, 2, 1, "#ea580c");
-    px(gx - 1, gy - 1, 4, 2, "#f97316");
-    px(gx, gy + 1, 2, 1, "#ea580c");
-    px(gx, gy - 1, 1, 1, "#b45309");      // costuras
-    px(gx + 1, gy, 1, 1, "#b45309");
-  }
-
-  function drawPowerBar() {
-    const x = 4, y = 10, w = 4, h = 38;   // en grilla
-    px(x - 1, y - 1, w + 2, h + 2, "#7c2d12");
-    px(x, y, w, h, "#fff7ed");
-    // zona verde (dinámica según la racha)
-    const z = zone();
-    const zy = y + h - Math.round((z.max / 100) * h);
-    const zh = Math.max(1, Math.round(((z.max - z.min) / 100) * h));
-    px(x, zy, w, zh, "#22c55e");
-    // línea del swish (centro exacto)
-    px(x, y + h - Math.round((ZONE_CENTER / 100) * h), w, 1, "#15803d");
-    // nivel actual
-    px(x - 1, y + h - Math.round((power / 100) * h), w + 2, 1, "#dc2626");
-  }
-
-  function drawFlash() {
-    if (!flash) return;
-    ctx.font = "bold 14px 'Courier New', monospace";
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#7c2d12";
-    ctx.fillText(flash.text, cv.width / 2 + 1, 25);
-    ctx.fillStyle = flash.ok ? "#15803d" : "#dc2626";
-    ctx.fillText(flash.text, cv.width / 2, 24);
-  }
-
-  function loop() {
-    if (!shooting) {
-      power += dir * barSpeed();
-      if (power >= 100) { power = 100; dir = -1; }
-      if (power <= 0)   { power = 0;   dir = 1; }
-    }
-    drawCourt();
-    drawPlayer();
-    drawPowerBar();
-    drawBall();
-    drawFlash();
-    requestAnimationFrame(loop);
-  }
-
-  window.shoot = function () {
-    if (shooting) return;
-    shooting = true;
-    document.getElementById("shootBtn").disabled = true;
-    flash = null;
-
-    const z = zone();
-    const scored = power >= z.min && power <= z.max;
-    const swish  = scored && Math.abs(power - ZONE_CENTER) <= SWISH;
-    // qué tan lejos llega la pelota según la potencia (ZONE_CENTER = justo al aro)
-    const reach = power / ZONE_CENTER;
-    const landX = BALL_START.x + (HOOP.x - BALL_START.x) * reach;
-    const landY = scored ? HOOP.y : (reach > 1 ? HOOP.y - 8 : HOOP.y + 30);
-    const peak  = 120 + power * 0.4;
-    let t = 0;
-
-    function fly() {
-      t += 0.025;
-      const k = Math.min(t, 1);
-      ball.x = BALL_START.x + (landX - BALL_START.x) * k;
-      ball.y = BALL_START.y + (landY - BALL_START.y) * k - peak * 4 * k * (1 - k) * 0.55;
-      if (k < 1) { requestAnimationFrame(fly); return; }
-
-      if (scored) {
-        score++;
-        streak += swish ? 2 : 1;           // tiro perfecto: bonus de racha
-        saveGameRecord(streak);
-        flash = { ok: true, text: swish ? `¡LIMPIA! 💦 +2 de racha (${streak})`
-                                        : streak >= 3 ? `¡Encestó! Racha de ${streak} 🔥` : "¡Encestó! 🎉" };
-        // caída por la red
-        let dropY = ball.y;
-        (function drop() {
-          dropY += 5;
-          ball.y = dropY;
-          if (dropY < HOOP.y + 60) requestAnimationFrame(drop);
-          else finish();
-        })();
-      } else {
-        streak = 0;
-        flash = { ok: false, text: power < z.min ? "Corto… 😬" : "¡Muy fuerte! 😅" };
-        finish();
-      }
-    }
-
-    function finish() {
-      document.getElementById("gScore").textContent = `Encestados: ${score}`;
-      document.getElementById("gStreak").textContent = `Racha: ${streak} 🔥`;
-      setTimeout(() => {
-        ball = { x: BALL_START.x, y: BALL_START.y };
-        shooting = false;
-        document.getElementById("shootBtn").disabled = false;
-      }, 700);
-      setTimeout(() => { flash = null; }, 1800);
-    }
-
-    fly();
-  };
-
-  // también se puede tirar tocando la cancha
-  cv.addEventListener("pointerdown", () => window.shoot());
-
-  // si cambia el jugador, la racha arranca de cero
-  document.getElementById("gamePlayer").addEventListener("change", () => {
-    streak = 0;
-    document.getElementById("gStreak").textContent = "Racha: 0 🔥";
-  });
-
-  loop();
-})();
 </script>
 </body>
 </html>
